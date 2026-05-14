@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Ecovillage Map - volunteer.templeearth.cc</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div class="map-controls">
+        <div class="control-panel">
+            <div class="panel-header">
+                <h3><i class="fas fa-globe-americas"></i> Ecovillage Map</h3>
+                <button class="toggle-btn" id="filterToggle"><i class="fas fa-filter"></i></button>
+            </div>
+            
+            <div class="panel-content" id="filterPanel">
+                <div class="filter-group">
+                    <label><input type="checkbox" class="feature-checkbox" data-feature="volunteer"> ❤️ Accepts Volunteers</label>
+                    <label><input type="checkbox" class="feature-checkbox" data-feature="shortterm"> 👋 Accepts Short-term Visitors</label>
+                    <label><input type="checkbox" class="feature-checkbox" data-feature="longterm"> 🏠 Accepts Long-term Residents</label>
+                    <label><input type="checkbox" class="feature-checkbox" data-feature="jobs"> 💼 Has Jobs</label>
+                </div>
+                
+                <div class="filter-group">
+                    <label>Search Location:</label>
+                    <input type="text" id="locationSearch" placeholder="Enter city, country...">
+                    <button id="searchBtn" class="btn"><i class="fas fa-search"></i></button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="stats-panel">
+            <div class="stat-item">
+                <span class="stat-label">Total Ecovillages</span>
+                <span class="stat-value" id="totalOrgs">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Showing</span>
+                <span class="stat-value" id="visibleCount">0</span>
+            </div>
+        </div>
+    </div>
+    
+    <div id="orgDetailsModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <div class="modal-body"></div>
+        </div>
+    </div>
+    
+    <div id="loadingIndicator" class="loading" style="display: none;">
+        <div class="spinner"></div>
+        <span>Loading ecovillages...</span>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+    <script src="js/app.js?v=10"></script>
+</body>
+</html>
