@@ -467,6 +467,9 @@ class SemanticEngine:
         if ce_batch:
             pairs = [(query, build_search_text(org)) for org in ce_batch]
             rerank_scores = self.reranker.predict(pairs, show_progress_bar=False)
+            # Apply sigmoid to normalize cross-encoder logits to 0-1 range
+            # so they're comparable with bi-encoder cosine similarity scores
+            rerank_scores = 1.0 / (1.0 + np.exp(-np.array(rerank_scores)))
             reranked = sorted(zip(ce_batch, rerank_scores), key=lambda x: x[1], reverse=True)
         else:
             reranked = []

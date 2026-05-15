@@ -396,14 +396,15 @@ async function performSemanticSearch() {
             searchScores = {};
             const total = results.length;
             results.forEach((r, idx) => {
-                const score = r.score;
-                // Normalize score to percentage relative to top result
-                const maxScore = results[0].score || 1;
-                const pct = Math.round((score / maxScore) * 100);
+                // Use rank-based percentage so it's always meaningful
+                // Cross-encoder logits and bi-encoder scores are on different scales
+                const pct = total > 1 
+                    ? Math.round(5 + 94 * (1 - idx / (total - 1)))
+                    : 99;
                 searchScores[r.id] = {
                     rank: idx + 1,
-                    score: score,
-                    pct: Math.min(pct, 99),
+                    score: r.score,
+                    pct: pct,
                     total: total
                 };
             });
