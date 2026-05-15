@@ -41,6 +41,11 @@
                     <!-- Result count toast (shows briefly then auto-hides) -->
                     <div id="semanticToast" style="display:none;margin-top:8px;padding:6px 10px;border-radius:4px;background:#e8f5e9;color:#2e7d32;font-size:13px;text-align:center;"></div>
                 </div>
+                <div style="margin-top:8px;padding-top:8px;border-top:1px solid #eee;text-align:center;">
+                    <a id="submitLink" href="#" style="font-size:12px;color:#888;text-decoration:none;" title="Add an ecovillage not yet on the map">
+                        <i class="fas fa-plus-circle"></i> Submit an Ecovillage
+                    </a>
+                </div>
             </div>
         </div>
         
@@ -66,6 +71,41 @@
         </div>
     </div>
     
+    <!-- Submit Ecovillage Modal -->
+    <div id="submitModal" class="modal">
+        <div class="modal-content" style="max-width:500px;">
+            <span class="close-submit close-modal">&times;</span>
+            <h3 style="margin:0 0 16px;"><i class="fas fa-plus-circle"></i> Submit an Ecovillage</h3>
+            <form id="submitForm" style="display:flex;flex-direction:column;gap:10px;">
+                <input type="text" id="subName" placeholder="Community name *" required style="padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
+                <textarea id="subDesc" rows="3" placeholder="Description (min 20 characters) *" required style="padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;resize:vertical;"></textarea>
+                <div style="display:flex;gap:8px;">
+                    <input type="text" id="subCity" placeholder="City" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
+                    <input type="text" id="subCountry" placeholder="Country *" required style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <input type="text" id="subWebsite" placeholder="Website URL" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
+                    <input type="email" id="subEmail" placeholder="Email" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <input type="number" id="subLat" placeholder="Latitude *" step="any" required style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
+                    <input type="number" id="subLng" placeholder="Longitude *" step="any" required style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:13px;">
+                    <label><input type="checkbox" id="subVolunteers"> Accepts Volunteers</label>
+                    <label><input type="checkbox" id="subVisitors"> Accepts Visitors</label>
+                    <label><input type="checkbox" id="subShortterm"> Short-term</label>
+                    <label><input type="checkbox" id="subLongterm"> Long-term</label>
+                    <label><input type="checkbox" id="subJobs"> Has Jobs</label>
+                </div>
+                <div id="submitError" style="color:#c62828;font-size:13px;display:none;"></div>
+                <button type="submit" id="submitBtn" style="padding:10px;background:#007bff;color:white;border:none;border-radius:4px;font-size:15px;cursor:pointer;">
+                    <i class="fas fa-paper-plane"></i> Submit
+                </button>
+            </form>
+        </div>
+    </div>
+    
     <div id="loadingIndicator" class="loading" style="display: none;">
         <div class="spinner"></div>
         <span>Loading ecovillages...</span>
@@ -73,6 +113,6 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
-    <script src="js/app.js?v=21"></script>
+    <script src="js/app.js?v=22"></script>
 </body>
 </html>

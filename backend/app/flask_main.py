@@ -4,6 +4,7 @@ import html
 import sqlite3
 import datetime
 import json
+import re
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -40,6 +41,31 @@ def row_to_dict(row):
     return dict(row) if row else None
 
 
+def sanitize_text(text):
+    """Strip all HTML/JS tags from text input."""
+    if not text:
+        return ''
+    text = str(text).strip()
+    text = re.sub(r'<[^>]*>', '', text)
+    text = re.sub(r'(?i)\bjavascript\s*:', '', text)
+    text = re.sub(r'(?i)\bdata\s*:', '', text)
+    return text[:2000]
+
+
+def validate_url(url):
+    """Validate and sanitize a URL. Returns sanitized URL or empty string."""
+    if not url or not url.strip():
+        return ''
+    url = url.strip()[:500]
+    if not re.match(r'^https?://', url):
+        return ''
+    blocked = ['<script', 'javascript:', 'data:', 'vbscript:', 'file:', 'ftp:']
+    for b in blocked:
+        if b in url.lower():
+            return ''
+    return url
+
+
 def generate_popup(org):
     """Generate popup HTML for a marker. Full description with scrollable container."""
     parts = ['<strong>' + html.escape(org['name']) + '</strong><br>']
@@ -61,10 +87,9 @@ def generate_popup(org):
     if badges:
         parts.append(' '.join(badges) + '<br>')
     
-    # Show address if available
     if org.get('address'):
         addr = html.escape(str(org['address']))
-        parts.append('<div style="margin:4px 0;font-size:11px;color:#555;\"><i class=\"fas fa-map-marker-alt\" style=\"color:#e74c3c;\"></i> ' + addr[:150] + '</div>')
+        parts.append('<div style="margin:4px 0;font-size:11px;color:#555;\\"><i class=\\"fas fa-map-marker-alt\\" style=\\"color:#e74c3c;\\"></i> ' + addr[:150] + '</div>')
     
     lines = []
     if org.get('city') or org.get('region') or org.get('country'):
@@ -75,11 +100,11 @@ def generate_popup(org):
             location_parts.append(html.escape(str(org['region'])))
         if org.get('country'):
             location_parts.append(html.escape(str(org['country'])))
-        parts.append('<div style="margin:2px 0;font-size:11px;color:#666;font-style:italic;\">' + ', '.join(location_parts) + '</div>')
+        parts.append('<div style="margin:2px 0;font-size:11px;color:#666;font-style:italic;\\">' + ', '.join(location_parts) + '</div>')
     
     lines = []
     if org.get('website'):
-        lines.append('<a href=\"' + html.escape(org['website']) + '\" target=\"_blank\" style=\"color:#007bff;text-decoration:none;\">Website</a>')
+        lines.append('<a href=\\"' + html.escape(org['website']) + '\\" target=\\"_blank\\" style=\\"color:#007bff;text-decoration:none;\\">Website</a>')
     if org['email']:
         lines.append('<a href="mailto:' + html.escape(org['email']) + '" style="color:#007bff;">Email</a>')
     if org['phone']:
@@ -101,7 +126,6 @@ def root():
 @app.route('/<path:path>')
 def static_files(path):
     resp = send_from_directory(FRONTEND_DIR, path)
-    # Force no caching for instant reflection of changes
     resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
     return resp
 
@@ -275,7 +299,6 @@ def get_statistics():
     })
 
 
-
 # ---------------------------------------------------------------------------
 # Semantic search endpoint
 # ---------------------------------------------------------------------------
@@ -305,7 +328,6 @@ def semantic_search():
         
         print(f"Semantic search query: {query!r}, top_k={top_k}, country={country_filter!r}")
 
-        # Use the semantic engine (bi-encoder retrieval + cross-encoder re-ranking)
         results = SEMANTIC_ENGINE.search(
             query=query,
             top_k=top_k,
@@ -324,6 +346,96 @@ def semantic_search():
         traceback.print_exc()
         print(f'Semantic search error: {e}')
         return jsonify({'error': 'Search failed'}), 500
+
+
+# ---------------------------------------------------------------------------
+# Ecovillage submission endpoint (sanitized)
+# ---------------------------------------------------------------------------
+
+@app.route('/api/submit-ecovillage', methods=['POST'])
+def submit_ecovillage():
+    """Accept a new ecovillage submission, sanitize, validate, and store."""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'Invalid JSON body'}), 400
+
+        name = sanitize_text(data.get('name', ''))
+        description = sanitize_text(data.get('description', ''))
+        country = sanitize_text(data.get('country', ''))
+        city = sanitize_text(data.get('city', ''))
+        website = validate_url(data.get('website', ''))
+        email = sanitize_text(data.get('email', ''))
+
+        errors = []
+        if not name or len(name) < 2:
+            errors.append('Name is required (min 2 characters)')
+        if not description or len(description) < 20:
+            errors.append('Description is required (min 20 characters)')
+        if not country:
+            errors.append('Country is required')
+
+        lat = data.get('latitude')
+        lng = data.get('longitude')
+        if lat is not None and lng is not None:
+            try:
+                lat = float(lat)
+                lng = float(lng)
+                if not (-90 <= lat <= 90):
+                    errors.append('Latitude must be between -90 and 90')
+                if not (-180 <= lng <= 180):
+                    errors.append('Longitude must be between -180 and 180')
+            except (ValueError, TypeError):
+                errors.append('Latitude and longitude must be valid numbers')
+        else:
+            errors.append('Latitude and longitude are required')
+
+        if email and not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email):
+            errors.append('Invalid email format')
+
+        if errors:
+            return jsonify({'error': '; '.join(errors)}), 400
+
+        accepts_volunteers = bool(data.get('accepts_volunteers', False))
+        accepts_visitors = bool(data.get('accepts_visitors', False))
+        accepts_shortterm = bool(data.get('accepts_shortterm', False))
+        accepts_longterm = bool(data.get('accepts_longterm', False))
+        has_jobs = bool(data.get('has_jobs', False))
+
+        conn = get_db()
+        cursor = conn.execute("""
+            INSERT INTO organizations
+                (name, description, website, email, city, country,
+                 latitude, longitude, source, accepts_volunteers,
+                 accepts_visitors, accepts_shortterm, accepts_longterm, has_jobs)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'user-submitted', ?, ?, ?, ?, ?)
+        """, (
+            name, description, website, email, city, country,
+            lat, lng, accepts_volunteers, accepts_visitors,
+            accepts_shortterm, accepts_longterm, has_jobs
+        ))
+        conn.commit()
+        org_id = cursor.lastrowid
+        conn.close()
+
+        try:
+            SEMANTIC_ENGINE.build_index(force=True)
+        except Exception as e:
+            print(f'Warning: could not rebuild embeddings: {e}')
+
+        print(f'New ecovillage submitted: id={org_id} name={name!r} country={country}')
+        return jsonify({
+            'success': True,
+            'id': org_id,
+            'message': f'{name} has been added to the map!'
+        }), 201
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f'Submission error: {e}')
+        return jsonify({'error': 'Submission failed'}), 500
+
 
 @app.route('/api/healthz')
 def health_check():
@@ -353,6 +465,25 @@ def api_info():
                     'POST /api/semantic-search -d \'{"query": "organic farming", "country": "Brazil", "top_k": 5}\'',
                     'POST /api/semantic-search -d \'{"query": "permaculture", "country": "South America", "top_k": 10}\''
                 ]
+            },
+            "submit_ecovillage": {
+                "description": "Submit a new ecovillage. All text is sanitized, URLs validated, coordinates checked.",
+                "endpoint": "POST /api/submit-ecovillage",
+                "parameters": {
+                    "name": "Organization name (required)",
+                    "description": "Description (required, min 20 chars)",
+                    "country": "Country (required)",
+                    "city": "City (optional)",
+                    "website": "Website URL (optional, http/https only)",
+                    "email": "Contact email (optional)",
+                    "latitude": "Latitude (required, -90 to 90)",
+                    "longitude": "Longitude (required, -180 to 180)",
+                    "accepts_volunteers": "boolean (optional)",
+                    "accepts_visitors": "boolean (optional)",
+                    "accepts_shortterm": "boolean (optional)",
+                    "accepts_longterm": "boolean (optional)",
+                    "has_jobs": "boolean (optional)"
+                }
             },
             "stats": "GET /api/statistics/",
             "health": "GET /api/healthz",

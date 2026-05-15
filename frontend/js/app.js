@@ -97,6 +97,18 @@ function setupEventListeners() {
         if (e.target === this) closeModal();
     });
 
+    // Submit ecovillage
+    document.getElementById('submitLink').addEventListener('click', function(e) {
+        e.preventDefault();
+        document.getElementById('submitError').style.display = 'none';
+        document.getElementById('submitModal').classList.add('active');
+    });
+    document.querySelector('.close-submit').addEventListener('click', closeSubmitModal);
+    document.getElementById('submitModal').addEventListener('click', function(e) {
+        if (e.target === this) closeSubmitModal();
+    });
+    document.getElementById('submitForm').addEventListener('submit', handleSubmit);
+
     // Keyboard shortcut: Escape clears active search
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
@@ -358,6 +370,66 @@ function showLoading(show) {
 
 function closeModal() {
     document.getElementById('orgDetailsModal').classList.remove('active');
+}
+
+function closeSubmitModal() {
+    document.getElementById('submitModal').classList.remove('active');
+    document.getElementById('submitError').style.display = 'none';
+}
+
+async function handleSubmit(e) {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    const errDiv = document.getElementById('submitError');
+    
+    const payload = {
+        name: document.getElementById('subName').value.trim(),
+        description: document.getElementById('subDesc').value.trim(),
+        city: document.getElementById('subCity').value.trim(),
+        country: document.getElementById('subCountry').value.trim(),
+        website: document.getElementById('subWebsite').value.trim(),
+        email: document.getElementById('subEmail').value.trim(),
+        latitude: parseFloat(document.getElementById('subLat').value),
+        longitude: parseFloat(document.getElementById('subLng').value),
+        accepts_volunteers: document.getElementById('subVolunteers').checked,
+        accepts_visitors: document.getElementById('subVisitors').checked,
+        accepts_shortterm: document.getElementById('subShortterm').checked,
+        accepts_longterm: document.getElementById('subLongterm').checked,
+        has_jobs: document.getElementById('subJobs').checked,
+    };
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+    errDiv.style.display = 'none';
+    
+    try {
+        const resp = await fetch('/api/submit-ecovillage', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+        
+        if (!resp.ok) {
+            errDiv.textContent = data.error || 'Submission failed';
+            errDiv.style.display = 'block';
+            return;
+        }
+        
+        closeSubmitModal();
+        document.getElementById('submitForm').reset();
+        showToast(data.message || 'Added to the map!', false);
+        
+        // Reload data to include the new org
+        await loadOrganizations();
+        
+    } catch (error) {
+        errDiv.textContent = 'Network error. Please try again.';
+        errDiv.style.display = 'block';
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit';
+    }
 }
 
 // ---------------------------------------------------------------------------
