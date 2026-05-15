@@ -19,6 +19,7 @@
             </div>
             
             <div class="panel-content" id="filterPanel">
+                <!-- Feature Filters -->
                 <div class="filter-group">
                     <label><input type="checkbox" class="feature-checkbox" data-feature="volunteer"> ❤️ Accepts Volunteers</label>
                     <label><input type="checkbox" class="feature-checkbox" data-feature="shortterm"> 👋 Accepts Short-term Visitors</label>
@@ -26,10 +27,19 @@
                     <label><input type="checkbox" class="feature-checkbox" data-feature="jobs"> 💼 Has Jobs</label>
                 </div>
                 
+                <!-- AI Search -->
                 <div class="filter-group">
-                    <label>Search Location:</label>
-                    <input type="text" id="locationSearch" placeholder="Enter city, country...">
-                    <button id="searchBtn" class="btn"><i class="fas fa-search"></i></button>
+                    <label style="font-weight:600;margin-bottom:8px;display:block;">
+                        <i class="fas fa-robot"></i> AI Search — describe what you want
+                    </label>
+                    <textarea id="semanticQuery" rows="3" placeholder="Describe what you're looking for... e.g., 'I'm a permaculture designer seeking a community that accepts volunteers for 3-6 months, with organic farming and natural building. Or mention a location: permaculture in Brazil, eco village in Europe'." style="width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:4px;font-size:14px;resize:vertical;margin-bottom:8px;"></textarea>
+                    
+                    <button id="semanticSearchBtn" class="btn btn-semantic">
+                        <i class="fas fa-search"></i> Find Matching Locations
+                    </button>
+                    
+                    <!-- Result count toast (shows briefly then auto-hides) -->
+                    <div id="semanticToast" style="display:none;margin-top:8px;padding:6px 10px;border-radius:4px;background:#e8f5e9;color:#2e7d32;font-size:13px;text-align:center;"></div>
                 </div>
             </div>
         </div>
@@ -60,6 +70,6 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
-    <script src="js/app.js?v=10"></script>
+    <script src="js/app.js?v=17"></script>
 </body>
 </html>

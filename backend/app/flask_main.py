@@ -18,6 +18,14 @@ app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path='')
 CORS(app)
 
 
+from app.semantic_engine import get_engine as get_semantic_engine, build_search_text
+
+# Initialize semantic search engine
+print("Loading semantic search engine (bi-encoder + cross-encoder)...")
+SEMANTIC_ENGINE = get_semantic_engine()
+print(f"✓ Semantic search ready with cross-encoder re-ranking")
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -267,6 +275,56 @@ def get_statistics():
     })
 
 
+
+# ---------------------------------------------------------------------------
+# Semantic search endpoint
+# ---------------------------------------------------------------------------
+
+@app.route('/api/semantic-search', methods=['POST', 'GET'])
+def semantic_search():
+    """Search organizations by semantic similarity to a query.
+    
+    Uses bi-encoder retrieval + cross-encoder re-ranking for maximum quality.
+    Supports optional country or continent filter.
+    """
+    try:
+        if request.method == 'GET':
+            query = request.args.get('query', '').strip()
+            top_k = min(int(request.args.get('top_k', 200)), 500)
+            country_filter = request.args.get('country', '').strip()
+        else:
+            data = request.get_json()
+            if data is None:
+                return jsonify({'error': 'Invalid JSON body'}), 400
+            query = data.get('query', '').strip()
+            top_k = min(int(data.get('top_k', 200)), 500)
+            country_filter = data.get('country', '').strip()
+        
+        if not query:
+            return jsonify({'error': 'Query required'}), 400
+        
+        print(f"Semantic search query: {query!r}, top_k={top_k}, country={country_filter!r}")
+
+        # Use the semantic engine (bi-encoder retrieval + cross-encoder re-ranking)
+        results = SEMANTIC_ENGINE.search(
+            query=query,
+            top_k=top_k,
+            country=country_filter or None,
+        )
+
+        print(f"Semantic search returned {len(results)} results")
+        return jsonify({
+            'query': query,
+            'count': len(results),
+            'results': results
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f'Semantic search error: {e}')
+        return jsonify({'error': 'Search failed'}), 500
+
 @app.route('/api/healthz')
 def health_check():
     return jsonify({"status": "healthy", "service": "volunteer-map-flask", "version": "2.0.0"})
@@ -282,6 +340,19 @@ def api_info():
                 "list": "GET /api/organizations/",
                 "geojson": "GET /api/organizations/geojson/",
                 "read": "GET /api/organizations/{id}",
+            },
+            "semantic_search": {
+                "description": "AI-powered semantic search using SentenceTransformer. Supports optional country or continent filter.",
+                "endpoint": "POST /api/semantic-search",
+                "parameters": {
+                    "query": "Natural language description (string, required)",
+                    "country": "Filter by country name, ISO code, or continent (optional). Examples: 'Brazil', 'BR', 'South America', 'Europe'",
+                    "top_k": "Number of results (max 50, default 10, optional)"
+                },
+                "examples": [
+                    'POST /api/semantic-search -d \'{"query": "organic farming", "country": "Brazil", "top_k": 5}\'',
+                    'POST /api/semantic-search -d \'{"query": "permaculture", "country": "South America", "top_k": 10}\''
+                ]
             },
             "stats": "GET /api/statistics/",
             "health": "GET /api/healthz",

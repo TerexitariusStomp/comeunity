@@ -12,6 +12,17 @@ let filters = {
 };
 
 const MARKER_COLOR = '#007bff';
+let searchScores = null; // Map<orgId, {rank, score, pct}> when search is active
+
+// Color scale for ranked results — interpolate from red (#1) to blue (last)
+function scoreToColor(score, maxScore, rank, total) {
+    if (!searchScores) return MARKER_COLOR;
+    // Normalize rank to 0 (top) … 1 (last)
+    const t = total > 1 ? (rank - 1) / (total - 1) : 0;
+    // HSL: hue goes 0 (red) → 220 (blue), lightness stays high for visibility
+    const hue = Math.round(220 * t);
+    return `hsl(${hue}, 85%, 55%)`;
+}
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
@@ -61,10 +72,13 @@ function setupEventListeners() {
         });
     });
 
-    // Search
-    document.getElementById('searchBtn').addEventListener('click', searchLocation);
-    document.getElementById('locationSearch').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') searchLocation();
+    // Semantic search
+    document.getElementById('semanticSearchBtn').addEventListener('click', performSemanticSearch);
+    document.getElementById('semanticQuery').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            performSemanticSearch();
+        }
     });
 
     // Filter toggle
@@ -77,29 +91,36 @@ function setupEventListeners() {
     document.getElementById('orgDetailsModal').addEventListener('click', function(e) {
         if (e.target === this) closeModal();
     });
+
+    // Keyboard shortcut: Escape clears active search
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            clearSemanticSearch();
+        }
+    });
 }
 
-function searchLocation() {
-    const locationInput = document.getElementById('locationSearch');
-    const location = locationInput.value.trim();
-    if (!location) {
-        alert('Please enter a location');
-        return;
+// ---------------------------------------------------------------------------
+// Simple location parser: extract "in <Place>" or trailing place name
+// ---------------------------------------------------------------------------
+function extractLocationFromQuery(query) {
+    // Match "in <CapitalizedWord>" or "in <Capitalized Word(s)>" at the end of the query
+    const inMatch = query.match(/\bin\s+([A-Z][a-zà-ü]{2,}(?:\s+[A-Z][a-zà-ü]{2,})?)\s*[,.]?\s*$/);
+    if (inMatch) {
+        const place = inMatch[1].trim();
+        // Skip false positives from common English patterns
+        const skipWords = ['Peace', 'Love', 'Nature', 'General', 'Need', 
+                          'Practice', 'Touch', 'Person', 'People', 'World',
+                          'Fact', 'Case', 'Part', 'Order', 'Place',
+                          'Future', 'Present', 'Past', 'Truth', 'Kind',
+                          'Question', 'Answer', 'Return', 'Spring', 'Summer',
+                          'Autumn', 'Winter', 'North', 'South', 'East', 'West',
+                          'Central', 'About', 'Which', 'Where', 'What'];
+        if (!skipWords.includes(place)) {
+            return place;
+        }
     }
-    fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(location))
-        .then(function(r) { return r.json(); })
-        .then(function(results) {
-            if (results && results.length > 0) {
-                const r = results[0];
-                map.setView([parseFloat(r.lat), parseFloat(r.lon)], 10);
-                currentLocation = [parseFloat(r.lat), parseFloat(r.lon)];
-            } else {
-                alert('Location not found');
-            }
-        })
-        .catch(function() {
-            alert('Search failed. Try a different location.');
-        });
+    return '';
 }
 
 async function loadOrganizations() {
@@ -140,10 +161,17 @@ async function loadOrganizations() {
 }
 
 function buildPopupHtml(org) {
-    // org.popup is already safe HTML from the backend (name, badges, website, email, phone)
-    // Just wrap it and add the View Details button
     const body = org.popup || '<p>' + escapeHtml(org.name) + '</p>';
+    // Add match score badge when search is active
+    let scoreBadge = '';
+    const scoreInfo = searchScores && searchScores[org.id];
+    if (scoreInfo) {
+        scoreBadge = `<div style="font-size:11px;color:#666;margin:2px 0;">
+            <span style="display:inline-block;background:${scoreToColor(scoreInfo.score, 1, scoreInfo.rank, scoreInfo.total)};color:white;padding:1px 8px;border-radius:10px;font-weight:600;">#${scoreInfo.rank} · ${scoreInfo.pct}% match</span>
+        </div>`;
+    }
     return '<div class="org-popup">' +
+        scoreBadge +
         body +
         '<br><div class="org-actions"><button class="btn view-details-btn" data-org-id="' + org.id + '">View Details</button></div>' +
         '</div>';
@@ -153,14 +181,18 @@ function createMarkers(orgs) {
     markers.forEach(marker => map.removeLayer(marker));
     markers = [];
 
-    const icon = L.divIcon({
-        className: 'custom-marker',
-        html: '<i class="fas fa-map-marker-alt" style="color:' + MARKER_COLOR + '; font-size: 18px;"></i>',
-        iconSize: [18, 18],
-        iconAnchor: [9, 18]
-    });
-
     orgs.forEach(org => {
+        const color = searchScores && searchScores[org.id]
+            ? scoreToColor(searchScores[org.id].score, 1, searchScores[org.id].rank, searchScores[org.id].total)
+            : MARKER_COLOR;
+
+        const icon = L.divIcon({
+            className: 'custom-marker',
+            html: '<i class="fas fa-map-marker-alt" style="color:' + color + '; font-size: 18px;"></i>',
+            iconSize: [18, 18],
+            iconAnchor: [9, 18]
+        });
+
         const marker = L.marker([org.latitude, org.longitude], { icon: icon }).addTo(map);
 
         const popupContent = buildPopupHtml(org);
@@ -209,14 +241,18 @@ function updateMarkers() {
     markers.forEach(marker => map.removeLayer(marker));
     markers = [];
 
-    const icon = L.divIcon({
-        className: 'custom-marker',
-        html: '<i class="fas fa-map-marker-alt" style="color:' + MARKER_COLOR + '; font-size: 18px;"></i>',
-        iconSize: [18, 18],
-        iconAnchor: [9, 18]
-    });
-
     visibleOrganizations.forEach(org => {
+        const color = searchScores && searchScores[org.id]
+            ? scoreToColor(searchScores[org.id].score, 1, searchScores[org.id].rank, searchScores[org.id].total)
+            : MARKER_COLOR;
+
+        const icon = L.divIcon({
+            className: 'custom-marker',
+            html: '<i class="fas fa-map-marker-alt" style="color:' + color + '; font-size: 18px;"></i>',
+            iconSize: [18, 18],
+            iconAnchor: [9, 18]
+        });
+
         const marker = L.marker([org.latitude, org.longitude], { icon: icon }).addTo(map);
         const popupContent = buildPopupHtml(org);
         marker.bindPopup(popupContent);
@@ -243,7 +279,6 @@ function showOrganizationDetails(orgId) {
     const modalBody = document.querySelector('.modal-body');
     const badgeHtml = buildBadges(org);
     
-    // Full description from org.description (plain text, not the HTML popup)
     let descHtml = '';
     const desc = org.description || '';
     if (desc && desc.length > 10) {
@@ -253,7 +288,6 @@ function showOrganizationDetails(orgId) {
             '</div></div>';
     }
     
-    // Links row - show website link at minimum
     let linksHtml = '';
     if (org.website) {
         linksHtml = '<a href="' + escapeHtml(org.website) + '" target="_blank" style="margin-right:12px;"><i class="fas fa-globe"></i> Website</a>';
@@ -288,6 +322,140 @@ function showLoading(show) {
 
 function closeModal() {
     document.getElementById('orgDetailsModal').classList.remove('active');
+}
+
+// ---------------------------------------------------------------------------
+// AI Search — results show ONLY on the map, no separate list
+// ---------------------------------------------------------------------------
+let isSearchActive = false;
+
+function showToast(msg, isError) {
+    const toast = document.getElementById('semanticToast');
+    toast.textContent = msg;
+    toast.style.display = 'block';
+    toast.style.background = isError ? '#ffebee' : '#e8f5e9';
+    toast.style.color = isError ? '#c62828' : '#2e7d32';
+    // Clear the search-active indicator when showing empty/error
+    if (isError) {
+        isSearchActive = false;
+    }
+    // Auto-hide after 6 seconds
+    clearTimeout(toast._hideTimer);
+    toast._hideTimer = setTimeout(() => {
+        toast.style.display = 'none';
+    }, 6000);
+}
+
+async function performSemanticSearch() {
+    const queryInput = document.getElementById('semanticQuery');
+    const query = queryInput.value.trim();
+    
+    if (!query) {
+        alert('Please describe what you are looking for.');
+        return;
+    }
+    
+    // Auto-extract location from query text
+    const country = extractLocationFromQuery(query);
+    
+    const btn = document.getElementById('semanticSearchBtn');
+    const toast = document.getElementById('semanticToast');
+    
+    // Clear any previous search results before starting new one
+    searchScores = null;
+    isSearchActive = false;
+
+    // Show loading
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Searching...';
+    btn.disabled = true;
+    toast.style.display = 'none';
+    
+    try {
+        const payload = { query: query, top_k: 200 };
+        if (country) {
+            payload.country = country;
+        }
+        
+        const response = await fetch('/api/semantic-search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        if (!response.ok) {
+            throw new Error('Search failed: ' + response.status);
+        }
+        
+        const data = await response.json();
+        const results = data.results || [];
+        
+        if (results.length > 0) {
+            isSearchActive = true;
+            
+            // Store search scores for color-coded markers
+            searchScores = {};
+            const total = results.length;
+            results.forEach((r, idx) => {
+                const score = r.score;
+                // Normalize score to percentage relative to top result
+                const maxScore = results[0].score || 1;
+                const pct = Math.round((score / maxScore) * 100);
+                searchScores[r.id] = {
+                    rank: idx + 1,
+                    score: score,
+                    pct: Math.min(pct, 99),
+                    total: total
+                };
+            });
+            
+            // Show only matching orgs on the map
+            const resultIds = results.map(r => r.id);
+            visibleOrganizations = allOrganizations.filter(org => resultIds.includes(org.id));
+            updateMarkers();
+            
+            // Zoom to show results
+            if (results.length === 1) {
+                map.setView([results[0].latitude, results[0].longitude], 10);
+            } else {
+                const bounds = L.latLngBounds(results.map(r => [r.latitude, r.longitude]));
+                map.fitBounds(bounds, { padding: [50, 50] });
+            }
+            
+            // Brief toast with match count
+            let msg = `Found ${results.length} matching location${results.length !== 1 ? 's' : ''}`;
+            if (country) msg += ` in ${country}`;
+            msg += ` · red=best match → blue`;
+            showToast(msg, false);
+        } else {
+            isSearchActive = false;
+            let msg = 'No matching locations found';
+            if (country) msg += ` in ${country}`;
+            msg += '. Try a different description.';
+            showToast(msg, false);
+        }
+        
+    } catch (error) {
+        console.error('Semantic search error:', error);
+        showToast('Search failed. Please try again.', true);
+    } finally {
+        btn.innerHTML = '<i class="fas fa-search"></i> Find Matching Locations';
+        btn.disabled = false;
+    }
+}
+
+function clearSemanticSearch() {
+    if (!isSearchActive) return;
+    
+    document.getElementById('semanticQuery').value = '';
+    const toast = document.getElementById('semanticToast');
+    toast.style.display = 'none';
+    clearTimeout(toast._hideTimer);
+    isSearchActive = false;
+    searchScores = null;
+    
+    // Reset markers to show all (respecting feature filters only)
+    filterOrganizations();
+    updateMarkers();
 }
 
 function escapeHtml(text) {
