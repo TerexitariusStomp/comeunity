@@ -170,11 +170,29 @@ function buildPopupHtml(org) {
             <span style="display:inline-block;background:${scoreToColor(scoreInfo.score, 1, scoreInfo.rank, scoreInfo.total)};color:white;padding:1px 8px;border-radius:10px;font-weight:600;">#${scoreInfo.rank} · ${scoreInfo.pct}% match</span>
         </div>`;
     }
+    // Data source label
+    const sourceLabel = getSourceLabel(org.source);
+    const sourceHtml = sourceLabel
+        ? `<div style="font-size:10px;color:#999;margin-top:2px;border-top:1px solid #eee;padding-top:2px;">${sourceLabel}</div>`
+        : '';
     return '<div class="org-popup">' +
         scoreBadge +
         body +
+        sourceHtml +
         '<br><div class="org-actions"><button class="btn view-details-btn" data-org-id="' + org.id + '">View Details</button></div>' +
         '</div>';
+}
+
+function getSourceLabel(source) {
+    if (!source) return '';
+    const s = source.toLowerCase();
+    if (s === 'ecovillage') return 'Listed on <a href="https://ecovillage.org" target="_blank" style="color:#666;">ecovillage.org</a> (GEN)';
+    if (s === 'ic-directory') return 'Listed on <a href="https://ic.org" target="_blank" style="color:#666;">ic.org</a> (FIC)';
+    if (s === 'ecobasa') return 'Listed on <a href="https://ecobasa.org" target="_blank" style="color:#666;">ecobasa.org</a>';
+    if (s === 'agartha') return 'Listed on <a href="https://agartha.one" target="_blank" style="color:#666;">agartha.one</a>';
+    if (s === 'tribes') return 'Listed on <a href="https://ic.org" target="_blank" style="color:#666;">ic.org</a>';
+    if (s === 'facebook') return 'Found on <a href="https://facebook.com" target="_blank" style="color:#666;">Facebook</a>';
+    return 'Source: ' + escapeHtml(source);
 }
 
 function createMarkers(orgs) {
@@ -299,6 +317,12 @@ function showOrganizationDetails(orgId) {
         linksHtml += '<span><i class="fas fa-phone"></i> ' + escapeHtml(org.phone) + '</span>';
     }
     
+    // Data source
+    const sourceLabel = getSourceLabel(org.source);
+    const sourceSection = sourceLabel
+        ? '<div class="org-section"><h4><i class="fas fa-database"></i> Data Source</h4><div style="font-size:13px;color:#666;">' + sourceLabel + '</div></div>'
+        : '';
+    
     modalBody.innerHTML = 
         '<div class="org-details">' +
         '<h2 style="margin:0 0 4px;font-size:20px;">' + escapeHtml(org.name) + '</h2>' +
@@ -306,6 +330,7 @@ function showOrganizationDetails(orgId) {
         descHtml +
         '<div class="org-section"><h4><i class="fas fa-map-marked-alt"></i> Location</h4><p>Lat: ' + org.latitude.toFixed(4) + ', Lon: ' + org.longitude.toFixed(4) + '</p></div>' +
         (linksHtml ? '<div class="org-section"><h4><i class="fas fa-link"></i> Links</h4><div>' + linksHtml + '</div></div>' : '') +
+        sourceSection +
         '</div>';
     
     document.getElementById('orgDetailsModal').classList.add('active');
