@@ -13,6 +13,7 @@ let filters = {
 
 const MARKER_COLOR = '#007bff';
 let searchScores = null; // Map<orgId, {rank, score, pct}> when search is active
+let searchResultIds = null; // Array of org IDs from current AI search
 
 // Color scale for ranked results — interpolate from red (#1) to blue (last)
 function scoreToColor(score, maxScore, rank, total) {
@@ -242,11 +243,16 @@ function buildBadges(org) {
 }
 
 function filterOrganizations() {
+    // Start from either search results or all orgs
+    const base = (isSearchActive && searchResultIds)
+        ? allOrganizations.filter(org => searchResultIds.includes(org.id))
+        : allOrganizations.slice();
+
     if (!filters.volunteer && !filters.shortterm && !filters.longterm && !filters.jobs) {
-        visibleOrganizations = allOrganizations.slice();
+        visibleOrganizations = base;
         return;
     }
-    visibleOrganizations = allOrganizations.filter(org => {
+    visibleOrganizations = base.filter(org => {
         if (filters.volunteer && !org.accepts_volunteers) return false;
         if (filters.shortterm && !org.accepts_shortterm) return false;
         if (filters.longterm && !org.accepts_longterm) return false;
@@ -388,6 +394,7 @@ async function performSemanticSearch() {
     
     // Clear any previous search results before starting new one
     searchScores = null;
+    searchResultIds = null;
     isSearchActive = false;
 
     // Show loading
@@ -417,8 +424,9 @@ async function performSemanticSearch() {
         if (results.length > 0) {
             isSearchActive = true;
             
-            // Store search scores for color-coded markers
+            // Store search scores and result IDs for filter interaction
             searchScores = {};
+            searchResultIds = results.map(r => r.id);
             const total = results.length;
             results.forEach((r, idx) => {
                 // Use rank-based percentage so it's always meaningful
@@ -434,9 +442,9 @@ async function performSemanticSearch() {
                 };
             });
             
-            // Show only matching orgs on the map
-            const resultIds = results.map(r => r.id);
-            visibleOrganizations = allOrganizations.filter(org => resultIds.includes(org.id));
+            // Show only matching orgs on the map, then re-apply active filters
+            visibleOrganizations = allOrganizations.filter(org => searchResultIds.includes(org.id));
+            filterOrganizations();
             updateMarkers();
             
             // Zoom to show results
@@ -478,6 +486,7 @@ function clearSemanticSearch() {
     clearTimeout(toast._hideTimer);
     isSearchActive = false;
     searchScores = null;
+    searchResultIds = null;
     
     // Reset markers to show all (respecting feature filters only)
     filterOrganizations();
