@@ -5,6 +5,9 @@ import sqlite3
 import datetime
 import json
 import re
+import hashlib
+import time
+from collections import defaultdict
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -28,18 +31,58 @@ print(f"✓ Semantic search ready with cross-encoder re-ranking")
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Analytics database setup
 # ---------------------------------------------------------------------------
 
-def get_db():
+def init_analytics_db():
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS page_views (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            page_path TEXT,
+            referrer TEXT DEFAULT '',
+            user_agent TEXT DEFAULT '',
+            ip_hash TEXT DEFAULT '',
+            screen_width INTEGER DEFAULT 0,
+            screen_height INTEGER DEFAULT 0,
+            timestamp TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_views_date ON page_views(timestamp)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_views_ip ON page_views(ip_hash)
+    """)
+    conn.commit()
+    conn.close()
+
+init_analytics_db()
 
 
-def row_to_dict(row):
-    return dict(row) if row else None
+# ---------------------------------------------------------------------------
+# Rate limiter (simple in-memory)
+# ---------------------------------------------------------------------------
 
+RATE_LIMIT_WINDOW = 60  # seconds
+RATE_LIMIT_MAX = 10     # max requests per window per IP
+_rate_store = defaultdict(list)
+
+def rate_limit(ip):
+    now = time.time()
+    window = RATE_LIMIT_WINDOW
+    max_req = RATE_LIMIT_MAX
+    # Clean old entries
+    _rate_store[ip] = [t for t in _rate_store[ip] if now - t < window]
+    if len(_rate_store[ip]) >= max_req:
+        return False
+    _rate_store[ip].append(now)
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Security helpers
+# ---------------------------------------------------------------------------
 
 def sanitize_text(text):
     """Strip all HTML/JS tags from text input."""
@@ -64,6 +107,47 @@ def validate_url(url):
         if b in url.lower():
             return ''
     return url
+
+
+def get_client_ip():
+    """Get client IP from headers, handling proxies."""
+    forwarded = request.headers.get('X-Forwarded-For', '')
+    if forwarded:
+        return forwarded.split(',')[0].strip()
+    return request.remote_addr or '0.0.0.0'
+
+
+def hash_ip(ip):
+    """One-way hash of IP for privacy-preserving unique visitor counting."""
+    return hashlib.sha256((ip + 'volunteer-map-salt').encode()).hexdigest()[:16]
+
+
+# ---------------------------------------------------------------------------
+# Security headers middleware
+# ---------------------------------------------------------------------------
+
+@app.after_request
+def add_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Permissions-Policy'] = 'geolocation=(self), camera=(), microphone=()'
+    return response
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def row_to_dict(row):
+    return dict(row) if row else None
 
 
 def generate_popup(org):
@@ -115,6 +199,98 @@ def generate_popup(org):
 
 
 # ---------------------------------------------------------------------------
+# Analytics endpoints
+# ---------------------------------------------------------------------------
+
+@app.route('/api/track-view', methods=['POST'])
+def track_view():
+    """Record a page view for analytics. Lightweight, no auth needed."""
+    try:
+        data = request.get_json() or {}
+        ip = get_client_ip()
+        ip_hash = hash_ip(ip)
+        
+        conn = get_db()
+        conn.execute("""
+            INSERT INTO page_views (page_path, referrer, user_agent, ip_hash, screen_width, screen_height)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            sanitize_text(data.get('path', '/')),
+            sanitize_text(data.get('referrer', '')),
+            (request.headers.get('User-Agent', '') or '')[:300],
+            ip_hash,
+            int(data.get('sw', 0)),
+            int(data.get('sh', 0)),
+        ))
+        conn.commit()
+        conn.close()
+        return jsonify({'ok': True})
+    except Exception:
+        return jsonify({'ok': False}), 500
+
+
+@app.route('/api/analytics')
+def get_analytics():
+    """Return analytics summary. Admin endpoint."""
+    conn = get_db()
+    
+    # Total page views
+    total_views = conn.execute("SELECT COUNT(*) FROM page_views").fetchone()[0]
+    
+    # Unique visitors (by IP hash)
+    unique_visitors = conn.execute("SELECT COUNT(DISTINCT ip_hash) FROM page_views").fetchone()[0]
+    
+    # Views today
+    today = datetime.date.today().isoformat()
+    views_today = conn.execute(
+        "SELECT COUNT(*) FROM page_views WHERE date(timestamp) = ?", (today,)
+    ).fetchone()[0]
+    
+    # Views this week
+    week_ago = (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
+    views_week = conn.execute(
+        "SELECT COUNT(*) FROM page_views WHERE date(timestamp) >= ?", (week_ago,)
+    ).fetchone()[0]
+    
+    # Views this month
+    month_ago = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
+    views_month = conn.execute(
+        "SELECT COUNT(*) FROM page_views WHERE date(timestamp) >= ?", (month_ago,)
+    ).fetchone()[0]
+    
+    # Unique visitors this week
+    unique_week = conn.execute(
+        "SELECT COUNT(DISTINCT ip_hash) FROM page_views WHERE date(timestamp) >= ?", (week_ago,)
+    ).fetchone()[0]
+    
+    # Top pages
+    top_pages = conn.execute(
+        "SELECT page_path, COUNT(*) as cnt FROM page_views GROUP BY page_path ORDER BY cnt DESC LIMIT 10"
+    ).fetchall()
+    
+    # Views by day (last 14)
+    days = conn.execute("""
+        SELECT date(timestamp) as day, COUNT(*) as cnt
+        FROM page_views WHERE date(timestamp) >= ?
+        GROUP BY day ORDER BY day
+    """, (month_ago,)).fetchall()
+    
+    conn.close()
+    
+    return jsonify({
+        'total_views': total_views,
+        'unique_visitors': unique_visitors,
+        'views_today': views_today,
+        'views_this_week': views_week,
+        'views_this_month': views_month,
+        'unique_visitors_this_week': unique_week,
+        'top_pages': [dict(p) for p in top_pages],
+        'views_by_day': [{'date': d['day'], 'count': d['cnt']} for d in days],
+        'tracking_since': '2026-05-15',
+    })
+
+
+# ---------------------------------------------------------------------------
 # Static files (Flask send_from_directory = instant updates, no cache)
 # ---------------------------------------------------------------------------
 
@@ -158,21 +334,6 @@ def organizations_geojson():
     if source:
         query += " AND source = ?"
         params.append(source)
-    if accepts_volunteers is not None:
-        query += " AND accepts_volunteers = ?"
-        params.append(1 if accepts_volunteers.lower() in ('true', '1') else 0)
-    if accepts_visitors is not None:
-        query += " AND accepts_visitors = ?"
-        params.append(1 if accepts_visitors.lower() in ('true', '1') else 0)
-    if accepts_shortterm is not None:
-        query += " AND accepts_shortterm = ?"
-        params.append(1 if accepts_shortterm.lower() in ('true', '1') else 0)
-    if accepts_longterm is not None:
-        query += " AND accepts_longterm = ?"
-        params.append(1 if accepts_longterm.lower() in ('true', '1') else 0)
-    if has_jobs is not None:
-        query += " AND has_jobs = ?"
-        params.append(1 if has_jobs.lower() in ('true', '1') else 0)
 
     conn = get_db()
     orgs = conn.execute(query, params).fetchall()
@@ -218,11 +379,6 @@ def organizations_geojson():
 @app.route('/api/organizations/')
 def read_organizations():
     source = request.args.get('source')
-    accepts_volunteers = request.args.get('accepts_volunteers')
-    accepts_visitors = request.args.get('accepts_visitors')
-    accepts_shortterm = request.args.get('accepts_shortterm')
-    accepts_longterm = request.args.get('accepts_longterm')
-    has_jobs = request.args.get('has_jobs')
     skip = request.args.get('skip', 0, type=int)
     limit = request.args.get('limit', 100, type=int)
 
@@ -232,22 +388,6 @@ def read_organizations():
     if source:
         conditions.append("source = ?")
         params.append(source)
-    if accepts_volunteers is not None:
-        conditions.append("accepts_volunteers = ?")
-        params.append(1 if accepts_volunteers.lower() in ('true', '1') else 0)
-    if accepts_visitors is not None:
-        conditions.append("accepts_visitors = ?")
-        params.append(1 if accepts_visitors.lower() in ('true', '1') else 0)
-    if accepts_shortterm is not None:
-        conditions.append("accepts_shortterm = ?")
-        params.append(1 if accepts_shortterm.lower() in ('true', '1') else 0)
-    if accepts_longterm is not None:
-        conditions.append("accepts_longterm = ?")
-        params.append(1 if accepts_longterm.lower() in ('true', '1') else 0)
-    if has_jobs is not None:
-        conditions.append("has_jobs = ?")
-        params.append(1 if has_jobs.lower() in ('true', '1') else 0)
-
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
     query += " LIMIT ? OFFSET ?"
@@ -256,7 +396,6 @@ def read_organizations():
     conn = get_db()
     rows = conn.execute(query, params).fetchall()
     conn.close()
-
     return jsonify([dict(r) for r in rows])
 
 
@@ -279,11 +418,9 @@ def get_statistics():
     shortterm = conn.execute("SELECT COUNT(*) FROM organizations WHERE accepts_shortterm = 1").fetchone()[0]
     longterm = conn.execute("SELECT COUNT(*) FROM organizations WHERE accepts_longterm = 1").fetchone()[0]
     jobs = conn.execute("SELECT COUNT(*) FROM organizations WHERE has_jobs = 1").fetchone()[0]
-
     sources = conn.execute("SELECT source, COUNT(*) FROM organizations GROUP BY source").fetchall()
     countries = conn.execute("SELECT country, COUNT(*) FROM organizations WHERE country IS NOT NULL GROUP BY country").fetchall()
     conn.close()
-
     return jsonify({
         "total_organizations": total,
         "total_opportunities": 0,
@@ -305,11 +442,6 @@ def get_statistics():
 
 @app.route('/api/semantic-search', methods=['POST', 'GET'])
 def semantic_search():
-    """Search organizations by semantic similarity to a query.
-    
-    Uses bi-encoder retrieval + cross-encoder re-ranking for maximum quality.
-    Supports optional country or continent filter.
-    """
     try:
         if request.method == 'GET':
             query = request.args.get('query', '').strip()
@@ -326,35 +458,31 @@ def semantic_search():
         if not query:
             return jsonify({'error': 'Query required'}), 400
         
-        print(f"Semantic search query: {query!r}, top_k={top_k}, country={country_filter!r}")
-
         results = SEMANTIC_ENGINE.search(
             query=query,
             top_k=top_k,
             country=country_filter or None,
         )
 
-        print(f"Semantic search returned {len(results)} results")
-        return jsonify({
-            'query': query,
-            'count': len(results),
-            'results': results
-        })
+        return jsonify({'query': query, 'count': len(results), 'results': results})
         
     except Exception as e:
         import traceback
         traceback.print_exc()
-        print(f'Semantic search error: {e}')
         return jsonify({'error': 'Search failed'}), 500
 
 
 # ---------------------------------------------------------------------------
-# Ecovillage submission endpoint (sanitized)
+# Ecovillage submission endpoint (sanitized + rate-limited)
 # ---------------------------------------------------------------------------
 
 @app.route('/api/submit-ecovillage', methods=['POST'])
 def submit_ecovillage():
     """Accept a new ecovillage submission, sanitize, validate, and store."""
+    ip = get_client_ip()
+    if not rate_limit(ip):
+        return jsonify({'error': 'Too many submissions. Please wait a minute and try again.'}), 429
+
     try:
         data = request.get_json()
         if not data:
@@ -423,7 +551,6 @@ def submit_ecovillage():
         except Exception as e:
             print(f'Warning: could not rebuild embeddings: {e}')
 
-        print(f'New ecovillage submitted: id={org_id} name={name!r} country={country}')
         return jsonify({
             'success': True,
             'id': org_id,
@@ -433,7 +560,6 @@ def submit_ecovillage():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        print(f'Submission error: {e}')
         return jsonify({'error': 'Submission failed'}), 500
 
 
@@ -453,37 +579,11 @@ def api_info():
                 "geojson": "GET /api/organizations/geojson/",
                 "read": "GET /api/organizations/{id}",
             },
-            "semantic_search": {
-                "description": "AI-powered semantic search using SentenceTransformer. Supports optional country or continent filter.",
-                "endpoint": "POST /api/semantic-search",
-                "parameters": {
-                    "query": "Natural language description (string, required)",
-                    "country": "Filter by country name, ISO code, or continent (optional). Examples: 'Brazil', 'BR', 'South America', 'Europe'",
-                    "top_k": "Number of results (max 50, default 10, optional)"
-                },
-                "examples": [
-                    'POST /api/semantic-search -d \'{"query": "organic farming", "country": "Brazil", "top_k": 5}\'',
-                    'POST /api/semantic-search -d \'{"query": "permaculture", "country": "South America", "top_k": 10}\''
-                ]
-            },
-            "submit_ecovillage": {
-                "description": "Submit a new ecovillage. All text is sanitized, URLs validated, coordinates checked.",
-                "endpoint": "POST /api/submit-ecovillage",
-                "parameters": {
-                    "name": "Organization name (required)",
-                    "description": "Description (required, min 20 chars)",
-                    "country": "Country (required)",
-                    "city": "City (optional)",
-                    "website": "Website URL (optional, http/https only)",
-                    "email": "Contact email (optional)",
-                    "latitude": "Latitude (required, -90 to 90)",
-                    "longitude": "Longitude (required, -180 to 180)",
-                    "accepts_volunteers": "boolean (optional)",
-                    "accepts_visitors": "boolean (optional)",
-                    "accepts_shortterm": "boolean (optional)",
-                    "accepts_longterm": "boolean (optional)",
-                    "has_jobs": "boolean (optional)"
-                }
+            "semantic_search": "POST /api/semantic-search",
+            "submit_ecovillage": "POST /api/submit-ecovillage",
+            "analytics": {
+                "track_view": "POST /api/track-view",
+                "stats": "GET /api/analytics",
             },
             "stats": "GET /api/statistics/",
             "health": "GET /api/healthz",

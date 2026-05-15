@@ -114,5 +114,22 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
     <script src="js/app.js?v=22"></script>
+    <!-- Analytics beacon -->
+    <script>
+    (function(){
+        fetch('/api/track-view', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({
+                path: window.location.pathname,
+                referrer: document.referrer || '',
+                sw: screen.width,
+                sh: screen.height,
+            }),
+            // Fire-and-forget: no need to wait for response
+            keepalive: true
+        }).catch(function(){});
+    })();
+    </script>
 </body>
 </html>
