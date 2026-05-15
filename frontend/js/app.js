@@ -70,6 +70,7 @@ function setupEventListeners() {
             filters[feature] = this.checked;
             filterOrganizations();
             updateMarkers();
+            updateResetButton();
         });
     });
 
@@ -86,6 +87,9 @@ function setupEventListeners() {
     document.getElementById('filterToggle').addEventListener('click', function() {
         document.getElementById('filterPanel').classList.toggle('active');
     });
+
+    // Reset button
+    document.getElementById('resetBtn').addEventListener('click', resetAll);
 
     // Modal close
     document.querySelector('.close-modal').addEventListener('click', closeModal);
@@ -158,6 +162,7 @@ async function loadOrganizations() {
         console.error('Error loading organizations:', error);
     } finally {
         showLoading(false);
+        updateResetButton();
     }
 }
 
@@ -474,6 +479,7 @@ async function performSemanticSearch() {
     } finally {
         btn.innerHTML = '<i class="fas fa-search"></i> Find Matching Locations';
         btn.disabled = false;
+        updateResetButton();
     }
 }
 
@@ -491,6 +497,37 @@ function clearSemanticSearch() {
     // Reset markers to show all (respecting feature filters only)
     filterOrganizations();
     updateMarkers();
+    updateResetButton();
+}
+
+function resetAll() {
+    // Clear search
+    const queryInput = document.getElementById('semanticQuery');
+    queryInput.value = '';
+    const toast = document.getElementById('semanticToast');
+    toast.style.display = 'none';
+    clearTimeout(toast._hideTimer);
+    isSearchActive = false;
+    searchScores = null;
+    searchResultIds = null;
+    
+    // Uncheck all filters
+    document.querySelectorAll('.feature-checkbox').forEach(cb => {
+        cb.checked = false;
+    });
+    filters = { volunteer: false, shortterm: false, longterm: false, jobs: false };
+    
+    // Show all orgs
+    visibleOrganizations = allOrganizations.slice();
+    updateMarkers();
+    updateResetButton();
+}
+
+function updateResetButton() {
+    const btn = document.getElementById('resetBtn');
+    const hasSearch = isSearchActive;
+    const hasFilters = filters.volunteer || filters.shortterm || filters.longterm || filters.jobs;
+    btn.style.display = (hasSearch || hasFilters) ? 'inline-block' : 'none';
 }
 
 function escapeHtml(text) {

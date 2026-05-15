@@ -126,6 +126,28 @@ body {
     background: #5a67d8;
 }
 
+.btn-semantic {
+    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+    margin-top: 4px;
+}
+
+.btn-semantic:hover {
+    background: linear-gradient(135deg, #0e8a7f 0%, #2dd36b 100%);
+}
+
+.btn-clear {
+    background: none;
+    border: none;
+    color: #999;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0 4px;
+}
+
+.btn-clear:hover {
+    color: #666;
+}
+
 /* Stats Panel */
 .stats-panel {
     display: flex;
@@ -293,6 +315,156 @@ body {
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+
+/* Semantic Search */
+.semantic-search-group {
+    border-top: 2px solid #e8f5f0;
+    padding-top: 12px;
+    margin-top: 8px;
+}
+
+.semantic-results {
+    margin-top: 12px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    padding: 12px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.semantic-results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+#semanticResultsCount {
+    font-size: 13px;
+    font-weight: 600;
+    color: #333;
+}
+
+.semantic-result-item {
+    background: white;
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 10px;
+    border-left: 4px solid #38ef7d;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.semantic-result-item:hover {
+    transform: translateX(2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.semantic-result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.semantic-rank {
+    font-weight: 700;
+    color: #11998e;
+    font-size: 13px;
+}
+
+.semantic-score {
+    font-size: 12px;
+    font-weight: 600;
+    color: #38ef7d;
+    background: #e8f5f0;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+
+.semantic-result-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: #333;
+    margin-bottom: 4px;
+}
+
+.semantic-result-location {
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 8px;
+}
+
+.semantic-result-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: white;
+    font-weight: 500;
+}
+
+.badge-volunteer { background: #ffc107; color: black; }
+.badge-shortterm { background: #17a2b8; }
+.badge-longterm { background: #17a2b8; }
+.badge-jobs { background: #dc3545; }
+
+.semantic-result-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.btn-semantic-view {
+    flex: 1;
+    background: #48bb78;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.btn-semantic-view:hover {
+    background: #38a169;
+}
+
+.btn-semantic-focus {
+    flex: 1;
+    background: #667eea;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.btn-semantic-focus:hover {
+    background: #5a67d8;
+}
+
+.semantic-loading,
+.semantic-error,
+.semantic-empty {
+    text-align: center;
+    padding: 20px;
+    color: #666;
+    font-size: 14px;
+}
+
+.semantic-error {
+    color: #dc3545;
 }
 
 /* Responsive Design */
