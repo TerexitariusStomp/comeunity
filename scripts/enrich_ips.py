@@ -163,16 +163,76 @@ def enrich_chickadee_ipapi(ip):
 
 
 # ---------------------------------------------------------------------------
-# Tier 2a: theHarvester (reverse DNS, virtual hosts, ports)
+# Tier 2b: Robtex - Free IP/DNS enrichment (no API key needed)
+# ---------------------------------------------------------------------------
+def enrich_robtex(ip):
+    """Query Robtex for IP intelligence (free, no key needed)."""
+    try:
+        import urllib.request
+        import json
+        
+        # Robtex has a free API for IP lookups
+        url = f"https://freeapi.robtex.com/ipquery/{ip}"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        resp = urllib.request.urlopen(req, timeout=15)
+        raw = resp.read().decode()
+        
+        data = {}
+        if raw.strip():
+            try:
+                robtex_data = json.loads(raw)
+                if robtex_data.get("status") == "ok":
+                    # Robtex returns: as, asname, asdesc, country, bgproute, pas (related domains)
+                    rob_asn = robtex_data.get("as")
+                    rob_asname = robtex_data.get("asname")
+                    if rob_asn and not data.get("as_number"):
+                        data["as_number"] = f"AS{rob_asn} {rob_asname or ''}"
+                    if rob_asname and not data.get("org"):
+                        data["org"] = rob_asname
+                    
+                    # Related domains (pas = potentially associated)
+                    pas = robtex_data.get("pas")
+                    if pas and isinstance(pas, list):
+                        domains = [p.get("o", "") for p in pas if p.get("o")]
+                        if domains:
+                            data["th_associated_urls"] = ", ".join(domains[:30])
+                    
+                    # BGP route
+                    bgp = robtex_data.get("bgproute")
+                    if bgp:
+                        data["sf_bgp_cidr"] = bgp
+                    
+                    # WHOIS description
+                    whois = robtex_data.get("whoisdesc")
+                    if whois and not data.get("sf_whois_org"):
+                        data["sf_whois_org"] = whois
+                    
+                    print(f"    ✓ Robtex: AS={rob_asn}, domains={len(pas or [])}")
+            except json.JSONDecodeError:
+                pass
+        
+        return data
+    except Exception as e:
+        # Robtex might block or throttle
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Tier 2c: theHarvester (reverse DNS, emails, social, OSINT)
 # ---------------------------------------------------------------------------
 def enrich_theharvester(ip):
-    """Run theHarvester against an IP for reverse DNS, emails, and social media discovery."""
+    """Run theHarvester with multiple OSINT sources for comprehensive enrichment."""
     try:
-        # Use multiple search sources: dns + bing + duckduckgo + hunter + censys
-        sources = "dns,bing,duckduckgo,hunter,censys"
+        # Use multiple search sources for maximum data coverage
+        # dns: reverse DNS lookups
+        # bing/duckduckgo: web search for social profiles, mentions
+        # hunter: email discovery via Hunter.io API
+        # censys: SSL cert metadata (hostnames, emails from certificates)
+        # hackertarget: reverse IP/DNS lookups
+        sources = "dns,bing,duckduckgo,hunter,censys,hackertarget"
         result = subprocess.run(
-            ["uv", "run", "theHarvester", "-d", ip, "-b", sources, "-l", "50"],
-            capture_output=True, text=True, timeout=120,
+            ["uv", "run", "theHarvester", "-d", ip, "-b", sources, "-l", "100"],
+            capture_output=True, text=True, timeout=180,
             cwd=THEHARVESTER_PATH
         )
         output = result.stdout + result.stderr
@@ -323,7 +383,19 @@ def enrich_ip(ip, tiers="123"):
     except Exception as e:
         print(f"    ✗ Chickadee: {e}")
     
-    # Tier 2: theHarvester - MEDIUM
+    # Tier 2b: Robtex - FAST (free API, no key)
+    if not data.get("note"):
+        try:
+            rob = enrich_robtex(ip)
+            if rob:
+                # Merge, preferring existing data
+                for k, v in rob.items():
+                    if v and not data.get(k):
+                        data[k] = v
+        except Exception as e:
+            print(f"    ✗ Robtex: {e}")
+    
+    # Tier 2c: theHarvester - MEDIUM
     if '2' in tiers or '3' in tiers:
         try:
             th = enrich_theharvester(ip)
