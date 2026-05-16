@@ -49,6 +49,10 @@
                     <a href="/privacy.html" style="font-size:12px;color:#888;text-decoration:none;">
                         <i class="fas fa-shield-alt"></i> Privacy
                     </a>
+                    &nbsp;&middot;&nbsp;
+                    <a href="https://github.com/TerexitariusStomp/volunteer-map" target="_blank" style="font-size:14px;color:#888;text-decoration:none;" title="View source on GitHub">
+                        <i class="fab fa-github"></i>
+                    </a>
                 </div>
             </div>
         </div>
@@ -213,5 +217,31 @@
         })();
     </script>
     <!-- End consent banner -->
+    
+    <!-- Google Translate - auto-detect browser language -->
+    <div id="translateContainer" style="display:none;"></div>
+    <script>
+        (function() {
+            // Detect browser language
+            var lang = (navigator.language || navigator.userLanguage || 'en').split('-')[0];
+            var supportedLangs = ['en','es','fr','de','pt','it','nl','pl','ru','ja','ko','zh','ar','tr','th','vi','sv','da','fi','nb','cs','ro','hu','el','he','hi','bn','id','ms','tl'];
+            
+            // If not English, show a small translate bar
+            if (lang !== 'en' && supportedLangs.includes(lang)) {
+                var bar = document.createElement('div');
+                bar.id = 'langBar';
+                bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#667eea;color:white;text-align:center;padding:6px 16px;font-size:13px;font-family:sans-serif;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;';
+                bar.innerHTML = '🌐 This page is available in English. ' +
+                    '<a href="https://translate.google.com/translate?hl=' + lang + '&sl=en&tl=' + lang + '&u=' + encodeURIComponent(window.location.href) + '" target="_blank" style="color:#fff;font-weight:600;text-decoration:underline;">Translate to ' + lang.toUpperCase() + '</a>' +
+                    ' <button onclick="this.parentElement.style.display=\'none\'" style="background:none;border:1px solid rgba(255,255,255,0.5);color:white;border-radius:4px;padding:2px 10px;cursor:pointer;font-size:12px;margin-left:4px;">X</button>';
+                document.body.prepend(bar);
+                // Shift the map controls down by the bar height
+                var style = document.createElement('style');
+                style.textContent = 'body { padding-top: 36px; } @media (max-width:768px) { body { padding-top: 36px; } }';
+                document.head.appendChild(style);
+            }
+        })();
+    </script>
+    <!-- End translate -->
 </body>
 </html>
