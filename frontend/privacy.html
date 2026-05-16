@@ -114,12 +114,21 @@
             <li><strong>Page views</strong> &mdash; which pages you visit and when</li>
             <li><strong>Referrer</strong> &mdash; the website or link that brought you here</li>
             <li><strong>Browser &amp; device</strong> &mdash; browser name and version, operating system, device type, screen resolution</li>
-            <li><strong>Approximate location</strong> &mdash; country-level from your IP address (your exact IP is not stored in raw form; it is anonymized)</li>
+            <li><strong>IP-based location &amp; ISP</strong> &mdash; approximate city, region, country, latitude/longitude, and internet service provider derived from your IP address using a local GeoIP database</li>
             <li><strong>Interactions</strong> &mdash; link clicks, file downloads, and search queries you make on the site</li>
             <li><strong>Performance data</strong> &mdash; page load times to help us improve speed</li>
             <li><strong>JavaScript errors</strong> &mdash; technical errors to help us fix bugs</li>
             <li><strong>Submissions</strong> &mdash; if you submit an ecovillage to the map, the data you provide (name, description, location) is stored and displayed publicly</li>
         </ul>
+
+        <h2>Data Enrichment</h2>
+        <p>To improve the quality and usefulness of the map data, we may enrich visitor IP information using free, self-hosted open-source data enrichment tools. These tools run entirely on our own server and no data is sent to external services. Enrichment includes:</p>
+        <ul>
+            <li><strong>Geographic &amp; ISP enrichment</strong> &mdash; <strong>Chickadee</strong> resolves IP addresses to city-level location data, ISP/organization names, and geographic coordinates using local databases (DB-IP).</li>
+            <li><strong>Open-source intelligence (OSINT)</strong> &mdash; <strong>SpiderFoot</strong> may correlate IP addresses, domains, and metadata against public data sources to identify patterns and enrich visitor context.</li>
+            <li><strong>Reconnaissance enrichment</strong> &mdash; <strong>theHarvester</strong> may gather publicly available information associated with IP addresses and domains for security and data quality purposes.</li>
+        </ul>
+        <p>All enrichment is performed locally on our infrastructure. No enriched data is shared, sold, or transmitted to any third party. These tools use free tier / rate-limited public APIs where applicable (e.g., ip-api.com, VirusTotal public) and respect their terms of service.</p>
 
         <h2>Cookies</h2>
         <p>Matomo sets the following cookies on your browser if you consent:</p>
