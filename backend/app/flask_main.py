@@ -90,7 +90,7 @@ print("Loading semantic search engine (bi-encoder + cross-encoder)...")
 SEMANTIC_ENGINE = get_semantic_engine()
 print(f"✓ Semantic search ready with cross-encoder re-ranking")
 
-# Ensure enrichment table exists
+# Ensure enrichment table exists with full schema
 def init_enrichment_db():
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -98,16 +98,21 @@ def init_enrichment_db():
             CREATE TABLE IF NOT EXISTS ip_enrichments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 ip TEXT UNIQUE,
-                country TEXT,
-                country_code TEXT,
-                region TEXT,
-                city TEXT,
-                lat REAL,
-                lon REAL,
-                isp TEXT,
-                org TEXT,
-                as_number TEXT,
-                enriched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                enriched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                country TEXT, country_code TEXT, region TEXT, region_name TEXT,
+                city TEXT, zip TEXT, lat REAL, lon REAL, timezone TEXT,
+                isp TEXT, org TEXT, as_number TEXT, reverse_dns TEXT,
+                mobile BOOLEAN, proxy BOOLEAN, hosting BOOLEAN,
+                vt_as_owner TEXT, vt_continent TEXT, vt_network TEXT,
+                vt_registry TEXT, vt_reputation INTEGER, vt_harmless_votes INTEGER,
+                vt_malicious_votes INTEGER, vt_last_analysis_date TEXT,
+                vt_whois TEXT, vt_jarm TEXT, vt_tags TEXT, vt_detection_samples TEXT,
+                sf_whois_org TEXT, sf_whois_netrange TEXT, sf_blacklist TEXT,
+                sf_open_ports TEXT, sf_hosting_provider TEXT, sf_reverse_domains TEXT,
+                sf_proxy_vpn TEXT, sf_ssl_cert TEXT, sf_reputation_risk TEXT,
+                sf_bgp_asn TEXT, sf_bgp_cidr TEXT, sf_threat_scores TEXT,
+                th_reverse_dns TEXT, th_virtual_hosts TEXT, th_dns_servers TEXT,
+                th_open_ports TEXT, th_associated_urls TEXT, th_banners TEXT
             )
         """)
         conn.commit()
@@ -458,6 +463,139 @@ def health_check():
     return jsonify({"status": "healthy", "service": "volunteer-map-flask", "version": "2.0.0"})
 
 
+@app.route('/api/enriched-ips')
+def get_enriched_ips():
+    """Return all enriched IP data as JSON."""
+    source = request.args.get('source', 'all')
+    limit = min(int(request.args.get('limit', 100)), 500)
+    offset = int(request.args.get('offset', 0))
+    
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM ip_enrichments ORDER BY enriched_at DESC LIMIT ? OFFSET ?", (limit, offset)).fetchall()
+    total = conn.execute("SELECT COUNT(*) FROM ip_enrichments").fetchone()[0]
+    conn.close()
+    
+    return jsonify({
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "results": [dict(r) for r in rows]
+    })
+
+
+@app.route('/enriched-ips')
+def enriched_ips_dashboard():
+    """Render the enriched IPs dashboard page."""
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM ip_enrichments ORDER BY enriched_at DESC LIMIT 200").fetchall()
+    total = conn.execute("SELECT COUNT(*) FROM ip_enrichments").fetchone()[0]
+    conn.close()
+    
+    html = '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enriched IPs Dashboard - volunteer.templeearth.cc</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:system-ui,sans-serif; background:#f5f7fa; color:#333; padding:20px; }
+        .header { max-width:1400px; margin:0 auto 20px; display:flex; justify-content:space-between; align-items:center; }
+        h1 { font-size:22px; }
+        .count { color:#666; font-size:14px; }
+        table { width:100%; max-width:1400px; margin:0 auto; border-collapse:collapse; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+        th { background:#667eea; color:white; padding:10px 8px; font-size:12px; text-align:left; white-space:nowrap; cursor:pointer; }
+        td { padding:8px; font-size:12px; border-bottom:1px solid #edf2f7; vertical-align:top; max-width:200px; overflow:hidden; text-overflow:ellipsis; }
+        tr:hover td { background:#f8f9ff; }
+        .ip { font-family:monospace; font-weight:600; color:#667eea; }
+        .badge { display:inline-block; padding:1px 6px; border-radius:3px; font-size:10px; margin:1px; }
+        .badge-green { background:#c6f6d5; color:#22543d; }
+        .badge-red { background:#fed7d7; color:#742a2a; }
+        .badge-blue { background:#bee3f8; color:#2a4365; }
+        .nav { max-width:1400px; margin:20px auto; text-align:center; font-size:13px; }
+        .nav a { color:#667eea; text-decoration:none; }
+        .nav a:hover { text-decoration:underline; }
+        .empty { text-align:center; padding:60px 20px; color:#888; }
+        .latlon { font-size:11px; color:#888; }
+        @media (max-width:768px) { th, td { font-size:11px; padding:6px 4px; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>Enriched IPs</h1>
+            <span class="count">''' + str(total) + ''' enriched IPs</span>
+        </div>
+        <div>
+            <a href="/" style="color:#667eea;text-decoration:none;font-size:14px;">&larr; Ecovillage Map</a>
+            &nbsp;
+            <a href="/analytics/" style="color:#667eea;text-decoration:none;font-size:14px;">Matomo</a>
+        </div>
+    </div>'''
+    
+    if not rows:
+        html += '<div class="empty"><p>No enriched IPs yet. Enrichment runs every 2 minutes and on consent accept.</p></div>'
+    else:
+        html += '''<div style="overflow-x:auto;"><table>
+        <thead><tr>
+            <th>IP</th><th>Country</th><th>City</th><th>Region</th><th>Coordinates</th>
+            <th>ISP</th><th>Organization</th><th>ASN</th><th>Reverse DNS</th>
+            <th>Proxy/VPN</th><th>Hosting</th><th>Mobile</th>
+            <th>VT Reputation</th><th>VT Votes</th><th>Blacklist</th>
+            <th>Open Ports</th><th>th Hosts</th><th>Enriched</th>
+        </tr></thead><tbody>'''
+        
+        for r in rows:
+            d = dict(r)
+            loc_badge = ''
+            if d.get('proxy'): loc_badge += '<span class="badge badge-red">VPN</span> '
+            if d.get('hosting'): loc_badge += '<span class="badge badge-blue">Hosting</span> '
+            if d.get('mobile'): loc_badge += '<span class="badge badge-green">Mobile</span> '
+            
+            vt_reputation = d.get('vt_reputation', '')
+            vt_votes = ''
+            if d.get('vt_harmless_votes') is not None or d.get('vt_malicious_votes') is not None:
+                vt_votes = f"⬜{d.get('vt_harmless_votes',0)}⬛{d.get('vt_malicious_votes',0)}"
+            
+            blacklist = ''
+            bad_colors = {'Y': '<span class="badge badge-red">BLOCKED</span>', 'N': '<span class="badge badge-green">Clean</span>'}
+            if d.get('sf_blacklist'):
+                blacklist = bad_colors.get(d['sf_blacklist'], d['sf_blacklist'])
+            
+            html += f'''<tr>
+                <td class="ip">{d.get('ip','')}</td>
+                <td>{d.get('country','')} ({d.get('country_code','')})</td>
+                <td>{d.get('city','')}</td>
+                <td>{d.get('region_name','')}</td>
+                <td class="latlon">{d.get('lat','')}, {d.get('lon','')}</td>
+                <td>{d.get('isp','')}</td>
+                <td>{d.get('org','')}</td>
+                <td>{d.get('as_number','')}</td>
+                <td style="font-size:11px;">{d.get('reverse_dns','')}</td>
+                <td>{loc_badge}</td>
+                <td>{'Yes' if d.get('hosting') else ''}</td>
+                <td>{'Yes' if d.get('mobile') else ''}</td>
+                <td>{vt_reputation}</td>
+                <td style="font-size:11px;">{vt_votes}</td>
+                <td>{blacklist}{'Yes' if d.get('sf_blacklist') else ''}</td>
+                <td style="font-size:11px;">{(d.get('sf_open_ports') or '')[:50]}</td>
+                <td style="font-size:11px;">{(d.get('th_reverse_dns') or '')[:60]}</td>
+                <td style="font-size:11px;">{d.get('enriched_at','')}</td>
+            </tr>'''
+        
+        html += '</tbody></table></div>'
+    
+    html += '''
+    <div class="nav">
+        <a href="/api/enriched-ips">JSON API</a> &middot;
+        <a href="/privacy.html">Privacy Policy</a>
+    </div>
+</body>
+</html>'''
+    
+    return html
+
+
 @app.route('/api/enrich-ip', methods=['POST'])
 def enrich_ip():
     """Enrich the visitor's IP with location/ISP data via Chickadee."""
@@ -518,6 +656,7 @@ def api_info():
             "semantic_search": "POST /api/semantic-search",
             "submit_ecovillage": "POST /api/submit-ecovillage",
             "enrich_ip": "POST /api/enrich-ip",
+            "enriched_ips": "GET /api/enriched-ips",
             "stats": "GET /api/statistics/",
             "health": "GET /api/healthz",
         }

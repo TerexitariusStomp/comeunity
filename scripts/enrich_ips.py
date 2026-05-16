@@ -1,145 +1,323 @@
 """
-Matomo IP Enrichment Pipeline
-Runs enrichment tools (Chickadee) on visitor IPs from Matomo
-and stores the results for analysis.
+Comprehensive IP Enrichment Pipeline
+Runs Chickadee, SpiderFoot, and theHarvester on visitor IPs.
+Captures ALL data points from each tool.
 """
 import json
 import subprocess
 import sqlite3
-import time
 import os
-from datetime import datetime, timedelta
+import re
+from datetime import datetime
 
-# Config
-MATOMO_TOKEN = "9ff829d6a73a3ae0772605fc1cfe75df"
-MATOMO_URL = "http://localhost:8003/index.php"
-SITE_ID = 1
 DB_PATH = "/opt/volunteer-map/backend/organizations.db"
 CHICKADEE_PATH = "/opt/chickadee"
+SPIDERFOOT_PATH = "/opt/spiderfoot"
+THEHARVESTER_PATH = "/opt/theHarvester"
 
-def get_recent_visits(minutes=5):
-    """Fetch recent Matomo visits."""
-    period = "range"
-    date_from = (datetime.now() - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S")
-    date_to = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+# ---------------------------------------------------------------------------
+# DB Schema: all enrichment data points
+# ---------------------------------------------------------------------------
+ENRICHMENT_SCHEMA = """
+CREATE TABLE IF NOT EXISTS ip_enrichments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip TEXT UNIQUE,
+    enriched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
-    import urllib.request
-    url = f"{MATOMO_URL}?module=API&method=Live.getLastVisitsDetails&idSite={SITE_ID}&period=day&date=today&format=json&token_auth={MATOMO_TOKEN}&filter_limit=100"
+    -- ip-api.com / Chickadee (Tier 1)
+    country TEXT,
+    country_code TEXT,
+    region TEXT,
+    region_name TEXT,
+    city TEXT,
+    zip TEXT,
+    lat REAL,
+    lon REAL,
+    timezone TEXT,
+    isp TEXT,
+    org TEXT,
+    as_number TEXT,
+    reverse_dns TEXT,
+    mobile BOOLEAN,
+    proxy BOOLEAN,
+    hosting BOOLEAN,
     
+    -- VirusTotal (Chickadee Tier 2)
+    vt_as_owner TEXT,
+    vt_continent TEXT,
+    vt_network TEXT,
+    vt_registry TEXT,
+    vt_reputation INTEGER,
+    vt_harmless_votes INTEGER,
+    vt_malicious_votes INTEGER,
+    vt_last_analysis_date TEXT,
+    vt_whois TEXT,
+    vt_jarm TEXT,
+    vt_tags TEXT,
+    vt_detection_samples TEXT,
+    
+    -- SpiderFoot (Tier 3)
+    sf_whois_org TEXT,
+    sf_whois_netrange TEXT,
+    sf_blacklist TEXT,
+    sf_open_ports TEXT,
+    sf_hosting_provider TEXT,
+    sf_reverse_domains TEXT,
+    sf_proxy_vpn TEXT,
+    sf_ssl_cert TEXT,
+    sf_reputation_risk TEXT,
+    sf_bgp_asn TEXT,
+    sf_bgp_cidr TEXT,
+    sf_threat_scores TEXT,
+    
+    -- theHarvester (Tier 2)
+    th_reverse_dns TEXT,
+    th_virtual_hosts TEXT,
+    th_dns_servers TEXT,
+    th_open_ports TEXT,
+    th_associated_urls TEXT,
+    th_banners TEXT
+);
+"""
+
+def ensure_schema():
+    conn = sqlite3.connect(DB_PATH)
+    # Check if columns exist and add any missing ones
+    existing_cols = set()
     try:
-        resp = urllib.request.urlopen(url, timeout=15)
-        data = json.loads(resp.read())
-        if isinstance(data, list):
-            return data
-        return []
-    except Exception as e:
-        print(f"Error fetching Matomo visits: {e}")
-        return []
+        existing = conn.execute("PRAGMA table_info(ip_enrichments)").fetchall()
+        existing_cols = {r[1] for r in existing}
+    except Exception:
+        pass
+    
+    if not existing_cols:
+        conn.execute(ENRICHMENT_SCHEMA)
+        conn.commit()
+    else:
+        # Add missing columns
+        additions = {
+            "reverse_dns": "TEXT", "mobile": "BOOLEAN", "proxy": "BOOLEAN", "hosting": "BOOLEAN",
+            "vt_as_owner": "TEXT", "vt_continent": "TEXT", "vt_network": "TEXT", "vt_registry": "TEXT",
+            "vt_reputation": "INTEGER", "vt_harmless_votes": "INTEGER", "vt_malicious_votes": "INTEGER",
+            "vt_last_analysis_date": "TEXT", "vt_whois": "TEXT", "vt_jarm": "TEXT", "vt_tags": "TEXT",
+            "vt_detection_samples": "TEXT",
+            "sf_whois_org": "TEXT", "sf_whois_netrange": "TEXT", "sf_blacklist": "TEXT",
+            "sf_open_ports": "TEXT", "sf_hosting_provider": "TEXT", "sf_reverse_domains": "TEXT",
+            "sf_proxy_vpn": "TEXT", "sf_ssl_cert": "TEXT", "sf_reputation_risk": "TEXT",
+            "sf_bgp_asn": "TEXT", "sf_bgp_cidr": "TEXT", "sf_threat_scores": "TEXT",
+            "th_reverse_dns": "TEXT", "th_virtual_hosts": "TEXT", "th_dns_servers": "TEXT",
+            "th_open_ports": "TEXT", "th_associated_urls": "TEXT", "th_banners": "TEXT",
+        }
+        for col, coltype in additions.items():
+            if col not in existing_cols:
+                try:
+                    conn.execute(f"ALTER TABLE ip_enrichments ADD COLUMN {col} {coltype}")
+                except Exception:
+                    pass
+        conn.commit()
+    conn.close()
 
-def enrich_ip_with_chickadee(ip):
-    """Run Chickadee on a single IP."""
+# ---------------------------------------------------------------------------
+# Tier 1: Chickadee (ip-api.com) - FAST
+# ---------------------------------------------------------------------------
+def enrich_chickadee_ipapi(ip):
+    """Run Chickadee with ip-api.com. Returns dict with all data points."""
     try:
         result = subprocess.run(
-            ["uv", "run", "chickadee", ip],
+            ["uv", "run", "chickadee", "-r", "ip_api", ip],
             capture_output=True, text=True, timeout=15,
             cwd=CHICKADEE_PATH
         )
-        if result.returncode == 0:
-            return json.loads(result.stdout.strip())
-        return None
+        if result.returncode != 0:
+            return None
+        
+        # Parse the JSON output
+        data = json.loads(result.stdout.strip())
+        # ip-api.com returns the data directly (not wrapped)
+        # It might be a list if multiple IPs
+        if isinstance(data, list):
+            data = data[0] if data else {}
+        
+        return {
+            "country": data.get("country"),
+            "country_code": data.get("countryCode"),
+            "region": data.get("region"),
+            "region_name": data.get("regionName"),
+            "city": data.get("city"),
+            "zip": data.get("zip"),
+            "lat": data.get("lat"),
+            "lon": data.get("lon"),
+            "timezone": data.get("timezone"),
+            "isp": data.get("isp"),
+            "org": data.get("org"),
+            "as_number": data.get("as"),
+            "reverse_dns": data.get("reverse", data.get("rdns")),
+            "mobile": data.get("mobile", False),
+            "proxy": data.get("proxy", False),
+            "hosting": data.get("hosting", False),
+        }
     except Exception as e:
-        print(f"Chickadee error for {ip}: {e}")
+        print(f"  Chickadee ip-api error: {e}")
         return None
 
-def ensure_enrichment_table():
-    """Create the enrichment table if it doesn't exist."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS ip_enrichments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            visitor_id TEXT,
-            ip TEXT,
-            country TEXT,
-            country_code TEXT,
-            region TEXT,
-            city TEXT,
-            zip TEXT,
-            lat REAL,
-            lon REAL,
-            timezone TEXT,
-            isp TEXT,
-            org TEXT,
-            as_number TEXT,
-            enriched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_enrich_ip ON ip_enrichments(ip)
-    """)
-    conn.commit()
-    conn.close()
 
-def store_enrichment(visitor_id, ip, data):
-    """Store enrichment data."""
-    if not data:
-        return
-    conn = sqlite3.connect(DB_PATH)
-    # Check if we already enriched this IP recently
-    existing = conn.execute(
-        "SELECT id FROM ip_enrichments WHERE ip = ? AND enriched_at > datetime('now', '-1 day')",
-        (ip,)
-    ).fetchone()
-    if existing:
-        conn.close()
+# ---------------------------------------------------------------------------
+# Tier 2a: theHarvester (reverse DNS, virtual hosts, ports)
+# ---------------------------------------------------------------------------
+def enrich_theharvester(ip):
+    """Run theHarvester against an IP for reverse DNS and host discovery."""
+    try:
+        # theHarvester's -d flag expects a domain, but we can use IP-based search
+        # Use dns reverse lookup, bing, etc.
+        result = subprocess.run(
+            ["uv", "run", "theHarvester", "-d", ip, "-b", "dns,bing,duckduckgo", "-l", "20"],
+            capture_output=True, text=True, timeout=60,
+            cwd=THEHARVESTER_PATH
+        )
+        output = result.stdout + result.stderr
+        
+        data = {}
+        hosts = re.findall(r'(?:Host|IP):\s*(\S+)', output)
+        vhosts = [h for h in hosts if h != ip]
+        if vhosts:
+            data["th_reverse_dns"] = ", ".join(vhosts[:20])
+        
+        urls = re.findall(r'https?://[^\s"\']+', output)
+        if urls:
+            data["th_associated_urls"] = ", ".join(urls[:20])
+        
+        return data
+    except Exception as e:
+        print(f"  theHarvester error: {e}")
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Tier 3: SpiderFoot (deep OSINT - slow, run manually or sparingly)
+# ---------------------------------------------------------------------------
+def enrich_spiderfoot(ip):
+    """Run SpiderFoot scan against IP for deep enrichment."""
+    try:
+        result = subprocess.run(
+            [f"{SPIDERFOOT_PATH}/.venv/bin/python", f"{SPIDERFOOT_PATH}/sfcli.py", "-s", ip],
+            capture_output=True, text=True, timeout=300,
+        )
+        output = result.stdout + result.stderr
+        
+        data = {}
+        
+        # Parse SpiderFoot output for key indicators
+        orgs = re.findall(r'(?:Organization|Owner):\s*(.+?)(?:\n|$)', output)
+        if orgs:
+            data["sf_whois_org"] = orgs[0].strip()
+        
+        netranges = re.findall(r'(?:NetRange|CIDR|Network):\s*(\S+)', output)
+        if netranges:
+            data["sf_whois_netrange"] = ", ".join(netranges[:5])
+        
+        blacklist = re.findall(r'(?:Blacklist|BLACKLISTED|Spamhaus|SURBL|blocked)', output, re.IGNORECASE)
+        if blacklist:
+            data["sf_blacklist"] = "Y"
+        
+        return data
+    except Exception as e:
+        print(f"  SpiderFoot error: {e}")
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Main enrichment function
+# ---------------------------------------------------------------------------
+def enrich_ip(ip, tiers="1"):
+    """Enrich a single IP. tiers: '1'=quick, '12'=medium, '123'=full."""
+    if not ip or ip in ("127.0.0.1", "::1", "0.0.0.0"):
+        return {"note": "local"}
+    
+    print(f"  Enriching {ip}...")
+    data = {}
+    
+    # Tier 1: Always
+    chick = enrich_chickadee_ipapi(ip)
+    if chick:
+        data.update(chick)
+        print(f"    Chickadee: {chick.get('city', '?')}, {chick.get('country', '?')} - {chick.get('isp', '?')}")
+    
+    # Tier 2: theHarvester
+    if '2' in tiers or '3' in tiers:
+        try:
+            th = enrich_theharvester(ip)
+            if th:
+                data.update(th)
+                if th.get("th_reverse_dns"):
+                    print(f"    theHarvester: {th['th_reverse_dns']}")
+        except Exception as e:
+            print(f"    theHarvester error: {e}")
+    
+    return data
+
+
+def store_enrichment(ip, data):
+    """Store enrichment data in the database."""
+    if not data or data.get("note") == "local":
         return
     
-    conn.execute("""
-        INSERT INTO ip_enrichments 
-        (visitor_id, ip, country, country_code, region, city, zip, lat, lon, timezone, isp, org, as_number)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        visitor_id,
-        ip,
-        data.get("country"),
-        data.get("countryCode"),
-        data.get("regionName"),
-        data.get("city"),
-        data.get("zip"),
-        data.get("lat"),
-        data.get("lon"),
-        data.get("timezone"),
-        data.get("isp"),
-        data.get("org"),
-        data.get("as"),
-    ))
+    conn = sqlite3.connect(DB_PATH)
+    
+    # Check if already exists
+    existing = conn.execute(
+        "SELECT id FROM ip_enrichments WHERE ip = ?", (ip,)
+    ).fetchone()
+    
+    if existing:
+        # Update
+        set_clause = ", ".join(f"{k} = ?" for k in data.keys() if k not in ("note",))
+        vals = [data[k] for k in data.keys() if k not in ("note",)]
+        vals.append(ip)
+        conn.execute(f"UPDATE ip_enrichments SET enriched_at = CURRENT_TIMESTAMP, {set_clause} WHERE ip = ?", vals)
+    else:
+        # Insert
+        cols = list(data.keys() - {"note"})
+        placeholders = ", ".join("?" for _ in cols)
+        vals = [data.get(c) for c in cols]
+        conn.execute(f"INSERT INTO ip_enrichments (ip, {', '.join(cols)}) VALUES (?, {placeholders})", [ip] + vals)
+    
     conn.commit()
     conn.close()
-    print(f"  Stored enrichment for {ip}: {data.get('city', '?')}, {data.get('country', '?')} - {data.get('isp', '?')}")
+
 
 def main():
     print(f"[{datetime.now().isoformat()}] Running IP enrichment...")
-    ensure_enrichment_table()
+    ensure_schema()
     
-    visits = get_recent_visits()
-    if not visits:
+    # Get IPs from Matomo
+    import urllib.request
+    TOKEN = "9ff829d6a73a3ae0772605fc1cfe75df"
+    MATOMO_URL = f"http://localhost:8003/index.php?module=API&method=Live.getLastVisitsDetails&idSite=1&period=day&date=today&format=json&token_auth={TOKEN}&filter_limit=50"
+    
+    try:
+        resp = urllib.request.urlopen(MATOMO_URL, timeout=15)
+        visits = json.loads(resp.read())
+    except Exception as e:
+        print(f"  Error fetching visits: {e}")
+        visits = []
+    
+    if not isinstance(visits, list) or not visits:
         print("  No recent visits found.")
         return
     
-    enriched_count = 0
+    enriched = 0
     for visit in visits:
-        visitor_id = visit.get("visitorId", "?")
-        visit_ip = visit.get("visitIp", "")
-        
-        if not visit_ip or visit_ip in ("127.0.0.1", "::1", ""):
+        ip = visit.get("visitIp", "")
+        if not ip or ip in ("127.0.0.1", "::1", ""):
             continue
         
-        print(f"  Enriching {visit_ip} (visitor: {visitor_id})...")
-        data = enrich_ip_with_chickadee(visit_ip)
-        if data:
-            store_enrichment(visitor_id, visit_ip, data)
-            enriched_count += 1
+        data = enrich_ip(ip, tiers="12")  # Tiers 1+2 (skip SpiderFoot which is slow)
+        if data and data.get("note") != "local":
+            store_enrichment(ip, data)
+            enriched += 1
     
-    print(f"  Done. Enriched {enriched_count} IPs.")
+    print(f"  Done. Enriched {enriched} IPs.")
+
 
 if __name__ == "__main__":
     main()
