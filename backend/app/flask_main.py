@@ -465,9 +465,24 @@ def health_check():
     return jsonify({"status": "healthy", "service": "volunteer-map-flask", "version": "2.0.0"})
 
 
-@app.route('/api/enriched-ips')
-def get_enriched_ips():
-    """Return all enriched IP data as JSON."""
+@app.route('/api/enriched-ips', methods=['GET', 'DELETE'])
+def enriched_ips_api():
+    """Return all enriched IP data as JSON, or delete a specific IP."""
+    if request.method == 'DELETE':
+        ip = request.args.get('ip', '')
+        if not ip:
+            return jsonify({'error': 'ip parameter required'}), 400
+        
+        import sys
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'scripts'))
+        try:
+            from compliance import delete_enriched_ip
+            deleted = delete_enriched_ip(ip)
+            return jsonify({'deleted': deleted, 'ip': ip})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+    
+    # GET: return all enriched IPs
     source = request.args.get('source', 'all')
     limit = min(int(request.args.get('limit', 100)), 500)
     offset = int(request.args.get('offset', 0))
@@ -601,6 +616,22 @@ def enriched_ips_dashboard():
     return html
 
 
+@app.route('/api/compliance')
+def compliance_stats():
+    """Return compliance statistics."""
+    import sys, os as _os
+    scripts_dir = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), 'scripts')
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    try:
+        import compliance
+        import importlib
+        importlib.reload(compliance)
+        return jsonify(compliance.get_stats())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/enrich-ip', methods=['POST'])
 def enrich_ip():
     """Enrich the visitor's IP with location/ISP data via Chickadee."""
@@ -662,6 +693,7 @@ def api_info():
             "submit_ecovillage": "POST /api/submit-ecovillage",
             "enrich_ip": "POST /api/enrich-ip",
             "enriched_ips": "GET /api/enriched-ips",
+            "compliance_stats": "GET /api/compliance",
             "stats": "GET /api/statistics/",
             "health": "GET /api/healthz",
         }

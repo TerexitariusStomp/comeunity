@@ -510,17 +510,90 @@ def generate_entity_description(ip, data):
     if tags:
         parts.append(f"tagged as: {tags[:100]}")
     
-    # Discovery timeline
-    enriched_at = data.get("enriched_at", "recently")
-    if enriched_at and enriched_at != "recently":
-        enriched_at = enriched_at[:10]
-    
     # Build description
     description = ". ".join(parts) + "."
     if len(description) > 500:
         description = description[:497] + "..."
     
     return description
+
+
+# ---------------------------------------------------------------------------
+# Tier 2f: Entity Description Web Search Enrichment
+# ---------------------------------------------------------------------------
+def enrich_with_description_search(ip, description):
+    """Use the entity description as a search query to find additional context."""
+    if not description or len(description) < 30:
+        return None
+    
+    try:
+        import urllib.request
+        import urllib.parse
+        import json
+        
+        # Extract key terms from the description for a focused search
+        # Find the organization name
+        org_match = __import__('re').search(r'belongs to ([^(]+)', description)
+        org_name = org_match.group(1).strip() if org_match else ""
+        
+        # Create a focused search query
+        query_parts = [org_name] if org_name else []
+        asn_match = __import__('re').search(r'AS(\d+)', description)
+        if asn_match:
+            query_parts.append(f"AS{asn_match.group(1)}")
+        
+        # Also add the IP to the search
+        ip_match = __import__('re').search(r'^\d+\.\d+\.\d+\.\d+', description)
+        if ip_match:
+            query_parts.append(ip_match.group(0))
+        
+        search_query = " ".join(query_parts) if query_parts else description[:200]
+        
+        # Use DuckDuckGo for a free web search
+        # DuckDuckGo's lite API doesn't need an API key
+        encoded = urllib.parse.quote(search_query)
+        search_url = f"https://lite.duckduckgo.com/lite/?q={encoded}"
+        req = urllib.request.Request(search_url, headers={
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'
+        })
+        resp = urllib.request.urlopen(req, timeout=10)
+        html = resp.read().decode('utf-8', errors='ignore')
+        
+        # Extract result snippets from the HTML
+        import re as _re
+        snippets = _re.findall(r'class="result-snippet">(.*?)</', html, _re.DOTALL)
+        if not snippets:
+            # Fallback: extract any text between link tags
+            snippets = _re.findall(r'<a[^>]*class="result-link"[^>]*>(.*?)</a>', html)
+        
+        result = {}
+        if snippets:
+            result["th_associated_urls_extra"] = " | ".join(s.strip() for s in snippets[:5] if s.strip())
+            print(f"    ✓ Web search found {len(snippets)} results for '{search_query[:60]}...'")
+        else:
+            # Try the DDG instant answer API as fallback
+            search_url2 = f"https://api.duckduckgo.com/?q={encoded}&format=json&no_html=1"
+            req2 = urllib.request.Request(search_url2, headers={'User-Agent': 'Mozilla/5.0'})
+            resp2 = urllib.request.urlopen(req2, timeout=10)
+            ddg_data = json.loads(resp2.read().decode())
+            if ddg_data.get("Abstract"):
+                result["th_associated_urls_extra"] = ddg_data["Abstract"][:300]
+                print(f"    ✓ DDG Abstract found: {ddg_data['Abstract'][:80]}...")
+            elif ddg_data.get("Results"):
+                titles = [r.get("Text", "") for r in ddg_data["Results"][:3] if r.get("Text")]
+                if titles:
+                    result["th_associated_urls_extra"] = " | ".join(titles)
+                    print(f"    ✓ DDG Results found: {len(titles)}")
+        
+        return result
+    except Exception as e:
+        print(f"    ✗ Web search enrichment: {e}")
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Main enrichment function
+# ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
@@ -636,8 +709,15 @@ virustotal = {vt_api_key}
             if desc:
                 data["th_entity_description"] = desc
                 print(f"    ✓ Entity description generated ({len(desc)} chars)")
+                
+                # Use the description as a search query to find additional context
+                search_data = enrich_with_description_search(ip, desc)
+                if search_data:
+                    for k, v in search_data.items():
+                        if v and not data.get(k):
+                            data[k] = v
         except Exception as e:
-            print(f"    ✗ Description generation: {e}")
+            print(f"    ✗ Description/search: {e}")
     
     return data
 
