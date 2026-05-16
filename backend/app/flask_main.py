@@ -90,6 +90,33 @@ print("Loading semantic search engine (bi-encoder + cross-encoder)...")
 SEMANTIC_ENGINE = get_semantic_engine()
 print(f"✓ Semantic search ready with cross-encoder re-ranking")
 
+# Ensure enrichment table exists
+def init_enrichment_db():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ip_enrichments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ip TEXT UNIQUE,
+                country TEXT,
+                country_code TEXT,
+                region TEXT,
+                city TEXT,
+                lat REAL,
+                lon REAL,
+                isp TEXT,
+                org TEXT,
+                as_number TEXT,
+                enriched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+init_enrichment_db()
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -431,6 +458,52 @@ def health_check():
     return jsonify({"status": "healthy", "service": "volunteer-map-flask", "version": "2.0.0"})
 
 
+@app.route('/api/enrich-ip', methods=['POST'])
+def enrich_ip():
+    """Enrich the visitor's IP with location/ISP data via Chickadee."""
+    try:
+        ip = get_client_ip()
+        if not ip or ip in ('127.0.0.1', '::1', '0.0.0.0'):
+            return jsonify({'ok': True, 'ip': ip, 'note': 'local'})
+        
+        # Run Chickadee
+        import subprocess, sqlite3, json
+        result = subprocess.run(
+            ['uv', 'run', 'chickadee', ip],
+            capture_output=True, text=True, timeout=15,
+            cwd='/opt/chickadee'
+        )
+        if result.returncode != 0:
+            return jsonify({'ok': False, 'error': 'enrichment failed'}), 500
+        
+        data = json.loads(result.stdout.strip())
+        
+        # Store in DB
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("""
+            INSERT OR IGNORE INTO ip_enrichments 
+            (ip, country, country_code, region, city, lat, lon, isp, org, as_number)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            ip,
+            data.get('country'),
+            data.get('countryCode'),
+            data.get('regionName'),
+            data.get('city'),
+            data.get('lat'),
+            data.get('lon'),
+            data.get('isp'),
+            data.get('org'),
+            data.get('as'),
+        ))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'ok': True, 'ip': ip, 'enriched': data.get('city'), 'isp': data.get('isp')})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
 @app.route('/api-info/', strict_slashes=False, methods=['GET'])
 def api_info():
     return jsonify({
@@ -444,6 +517,7 @@ def api_info():
             },
             "semantic_search": "POST /api/semantic-search",
             "submit_ecovillage": "POST /api/submit-ecovillage",
+            "enrich_ip": "POST /api/enrich-ip",
             "stats": "GET /api/statistics/",
             "health": "GET /api/healthz",
         }

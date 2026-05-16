@@ -226,13 +226,13 @@
         var projectKey = localStorage.getItem('openreplay_project_key');
         if (projectKey && projectKey.length > 8) {
             var script = document.createElement('script');
-            script.src = '/analytics/openreplay.js';
+            script.src = '/replay/openreplay.js';
             script.async = true;
             script.onload = function() {
                 if (window.OpenReplay) {
                     window.OpenReplay.init({
                         projectKey: projectKey,
-                        ingestPoint: 'https://volunteer.templeearth.cc/analytics/ingest'
+                        ingestPoint: 'https://volunteer.templeearth.cc/replay/ingest'
                     });
                 }
             };
@@ -276,6 +276,8 @@
             // Accept
             document.getElementById('consentAccept').addEventListener('click', function() {
                 _paq.push(['rememberConsentGiven']);
+                // Trigger server-side IP enrichment immediately
+                fetch('/api/enrich-ip', { method: 'POST', keepalive: true }).catch(function(){});
                 banner.style.display = 'none';
             });
             
