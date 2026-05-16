@@ -78,7 +78,8 @@ CREATE TABLE IF NOT EXISTS ip_enrichments (
     th_associated_urls TEXT,
     th_banners TEXT,
     th_emails TEXT,
-    th_social_media TEXT
+    th_social_media TEXT,
+    th_entity_description TEXT
 );
 """
 
@@ -108,6 +109,7 @@ def ensure_schema():
             "sf_proxy_vpn": "TEXT", "sf_ssl_cert": "TEXT", "sf_reputation_risk": "TEXT",
             "sf_bgp_asn": "TEXT", "sf_bgp_cidr": "TEXT", "sf_threat_scores": "TEXT",
             "th_emails": "TEXT", "th_social_media": "TEXT",
+            "th_entity_description": "TEXT", "otx_asn": "TEXT",
         }
         for col, coltype in additions.items():
             if col not in existing_cols:
@@ -364,6 +366,164 @@ def enrich_spiderfoot(ip):
 
 
 # ---------------------------------------------------------------------------
+# Tier 2d: AlienVault OTX - Threat intelligence (free tier, needs API key)
+# ---------------------------------------------------------------------------
+OTX_API_KEY = "2399eabd8059bad30f59041c3485c88b93e05f220aa197ef03647b47fe42a0b3"
+
+def enrich_alienvault(ip):
+    """Query AlienVault OTX for threat intelligence data."""
+    try:
+        import urllib.request
+        import json
+        
+        url = f"https://otx.alienvault.com/api/v1/indicators/IPv4/{ip}/general"
+        req = urllib.request.Request(url, headers={
+            'X-OTX-API-KEY': OTX_API_KEY,
+            'User-Agent': 'Mozilla/5.0'
+        })
+        resp = urllib.request.urlopen(req, timeout=15)
+        data = json.loads(resp.read())
+        
+        result = {}
+        
+        # Reputation score (0 = clean, negative = malicious)
+        rep = data.get("reputation")
+        if rep is not None:
+            result["vt_reputation"] = rep
+        
+        # Pulse info - threat intelligence
+        pulse_info = data.get("pulse_info", {})
+        pulse_count = pulse_info.get("count", 0)
+        if pulse_count > 0:
+            result["sf_threat_scores"] = str(pulse_count)
+            pulses = pulse_info.get("pulses", [])
+            tags = set()
+            for p in pulses[:10]:
+                for t in p.get("tags", []):
+                    tags.add(t)
+            if tags:
+                result["vt_tags"] = ", ".join(list(tags)[:20])
+        
+        # ASN from OTX
+        otx_asn = data.get("asn")
+        if otx_asn:
+            # Format: "AS15169 google llc"
+            result["otx_asn"] = otx_asn
+        
+        print(f"    ✓ AlienVault: rep={rep}, pulses={pulse_count}")
+        return result
+    except Exception as e:
+        print(f"    ✗ AlienVault: {e}")
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Tier 2e: Entity Description Generator
+# ---------------------------------------------------------------------------
+def generate_entity_description(ip, data):
+    """Generate a human-readable entity description from all enrichment data."""
+    parts = []
+    
+    # Who owns it
+    org = data.get("org") or data.get("isp") or data.get("sf_whois_org") or data.get("vt_as_owner")
+    asn = data.get("as_number") or data.get("otx_asn", "")
+    if org:
+        parts.append(f"{ip} belongs to {org}")
+        if asn:
+            parts[-1] += f" ({asn})"
+    elif asn:
+        parts.append(f"{ip} is under {asn}")
+    
+    # Where is it
+    city = data.get("city")
+    region = data.get("region_name") or data.get("region")
+    country = data.get("country") or data.get("country_code")
+    loc_parts = [p for p in [city, region, country] if p]
+    if loc_parts:
+        parts.append(f"located in {', '.join(loc_parts)}")
+    
+    # What type
+    types = []
+    if data.get("hosting"): types.append("hosting infrastructure")
+    if data.get("proxy"): types.append("proxy/VPN")
+    if data.get("mobile"): types.append("mobile network")
+    
+    # Infer type from org/ASN if not flagged
+    if not types:
+        org_lower = (org or "").lower()
+        if any(k in org_lower for k in ["google", "cloudflare", "aws", "amazon", "azure", "microsoft",
+                                          "digitalocean", "linode", "ovh", "hetzner", "oracle",
+                                          "ibm", "alibaba", "tencent", "vultr", "scaleway",
+                                          "hosting", "host", "server", "cloud", "data center",
+                                          "cdn", "dns", "transit"]):
+            types.append("hosting/infrastructure")
+        elif data.get("hosting") == False:
+            types.append("residential/business IP")
+    if types:
+        parts.append(f"classified as {'/'.join(types)}")
+    
+    # Reputation assessment
+    rep_assessment = []
+    vt_rep = data.get("vt_reputation")
+    if vt_rep is not None:
+        try:
+            rep_val = int(vt_rep)
+            if rep_val < 0:
+                rep_assessment.append(f"negative reputation ({rep_val})")
+            elif rep_val == 0:
+                rep_assessment.append("neutral reputation")
+            else:
+                rep_assessment.append(f"positive reputation ({rep_val})")
+        except (ValueError, TypeError):
+            pass
+    
+    if data.get("sf_blacklist"):
+        rep_assessment.append("listed on blacklists")
+    else:
+        rep_assessment.append("not found on blacklists")
+    
+    threat_count = data.get("sf_threat_scores")
+    if threat_count and threat_count != "0":
+        rep_assessment.append(f"{threat_count} threat associations")
+    
+    if rep_assessment:
+        parts.append("has " + ", ".join(rep_assessment))
+    
+    # ISP info
+    isp = data.get("isp")
+    if isp and isp != org:
+        parts.append(f"served by {isp}")
+    
+    # Reverse DNS / hostname
+    rdns = data.get("reverse_dns") or data.get("th_reverse_dns")
+    if rdns:
+        parts.append(f"identified as {rdns.split(',')[0].strip()}")
+    
+    # Associated domains
+    domains = data.get("th_associated_urls")
+    if domains:
+        domain_list = domains.split(",")[:3]
+        parts.append(f"associated with {', '.join(d.strip() for d in domain_list)}")
+    
+    # Threat tags
+    tags = data.get("vt_tags")
+    if tags:
+        parts.append(f"tagged as: {tags[:100]}")
+    
+    # Discovery timeline
+    enriched_at = data.get("enriched_at", "recently")
+    if enriched_at and enriched_at != "recently":
+        enriched_at = enriched_at[:10]
+    
+    # Build description
+    description = ". ".join(parts) + "."
+    if len(description) > 500:
+        description = description[:497] + "..."
+    
+    return description
+
+
+# ---------------------------------------------------------------------------
 # Main enrichment function
 # ---------------------------------------------------------------------------
 def enrich_ip(ip, tiers="123"):
@@ -457,6 +617,27 @@ virustotal = {vt_api_key}
                     print(f"    ✓ SpiderFoot: scan complete")
         except Exception as e:
             print(f"    ✗ SpiderFoot: {e}")
+    
+    # Tier 2d: AlienVault OTX
+    if not data.get("note"):
+        try:
+            av = enrich_alienvault(ip)
+            if av:
+                for k, v in av.items():
+                    if v is not None and not data.get(k):
+                        data[k] = v
+        except Exception as e:
+            print(f"    ✗ AlienVault: {e}")
+    
+    # Generate entity description from all collected data
+    if data and not data.get("note"):
+        try:
+            desc = generate_entity_description(ip, data)
+            if desc:
+                data["th_entity_description"] = desc
+                print(f"    ✓ Entity description generated ({len(desc)} chars)")
+        except Exception as e:
+            print(f"    ✗ Description generation: {e}")
     
     return data
 

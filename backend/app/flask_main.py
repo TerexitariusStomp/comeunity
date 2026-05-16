@@ -113,7 +113,8 @@ def init_enrichment_db():
                 sf_bgp_asn TEXT, sf_bgp_cidr TEXT, sf_threat_scores TEXT,
                 th_reverse_dns TEXT, th_virtual_hosts TEXT, th_dns_servers TEXT,
                 th_open_ports TEXT, th_associated_urls TEXT, th_banners TEXT,
-                th_emails TEXT, th_social_media TEXT
+                th_emails TEXT, th_social_media TEXT,
+                th_entity_description TEXT
             )
         """)
         conn.commit()
@@ -543,7 +544,7 @@ def enriched_ips_dashboard():
             <th>ISP</th><th>Organization</th><th>ASN</th><th>Reverse DNS</th>
             <th>Proxy/VPN</th><th>Hosting</th><th>Mobile</th>
             <th>VT Reputation</th><th>VT Votes</th><th>Blacklist</th>
-            <th>Open Ports</th><th>th Hosts</th><th>Emails</th><th>Social</th><th>Enriched</th>
+            <th>Open Ports</th><th>th Hosts</th><th>Emails</th><th>Social</th><th>Entity Description</th><th>Enriched</th>
         </tr></thead><tbody>'''
         
         for r in rows:
@@ -583,6 +584,7 @@ def enriched_ips_dashboard():
                 <td style="font-size:11px;">{(d.get('th_reverse_dns') or '')[:60]}</td>
                 <td style="font-size:11px;">{(d.get('th_emails') or '')[:60]}</td>
                 <td style="font-size:11px;">{(d.get('th_social_media') or '')[:60]}</td>
+                <td style="font-size:11px;max-width:300px;">{(d.get('th_entity_description') or '')[:200]}</td>
                 <td style="font-size:11px;">{d.get('enriched_at','')}</td>
             </tr>'''
         
