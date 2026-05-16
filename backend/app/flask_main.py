@@ -2,10 +2,8 @@
 import os
 import html
 import sqlite3
-import datetime
 import json
 import re
-import hashlib
 import time
 from collections import defaultdict
 from flask import Flask, request, jsonify, send_from_directory
@@ -21,60 +19,17 @@ FRONTEND_DIR = os.path.join(os.path.dirname(BASE_DIR), 'frontend')
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path='')
 CORS(app)
 
-
-from app.semantic_engine import get_engine as get_semantic_engine, build_search_text
-
-# Initialize semantic search engine
-print("Loading semantic search engine (bi-encoder + cross-encoder)...")
-SEMANTIC_ENGINE = get_semantic_engine()
-print(f"✓ Semantic search ready with cross-encoder re-ranking")
-
-
 # ---------------------------------------------------------------------------
-# Analytics database setup
+# Rate limiter (simple in-memory sliding window)
 # ---------------------------------------------------------------------------
-
-def init_analytics_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS page_views (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            page_path TEXT,
-            referrer TEXT DEFAULT '',
-            user_agent TEXT DEFAULT '',
-            ip_hash TEXT DEFAULT '',
-            screen_width INTEGER DEFAULT 0,
-            screen_height INTEGER DEFAULT 0,
-            timestamp TEXT DEFAULT (datetime('now'))
-        )
-    """)
-    conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_views_date ON page_views(timestamp)
-    """)
-    conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_views_ip ON page_views(ip_hash)
-    """)
-    conn.commit()
-    conn.close()
-
-init_analytics_db()
-
-
-# ---------------------------------------------------------------------------
-# Rate limiter (simple in-memory)
-# ---------------------------------------------------------------------------
-
-RATE_LIMIT_WINDOW = 60  # seconds
-RATE_LIMIT_MAX = 10     # max requests per window per IP
+RATE_LIMIT_WINDOW = 60
+RATE_LIMIT_MAX = 10
 _rate_store = defaultdict(list)
 
 def rate_limit(ip):
     now = time.time()
-    window = RATE_LIMIT_WINDOW
-    max_req = RATE_LIMIT_MAX
-    # Clean old entries
-    _rate_store[ip] = [t for t in _rate_store[ip] if now - t < window]
-    if len(_rate_store[ip]) >= max_req:
+    _rate_store[ip] = [t for t in _rate_store[ip] if now - t < RATE_LIMIT_WINDOW]
+    if len(_rate_store[ip]) >= RATE_LIMIT_MAX:
         return False
     _rate_store[ip].append(now)
     return True
@@ -85,18 +40,16 @@ def rate_limit(ip):
 # ---------------------------------------------------------------------------
 
 def sanitize_text(text):
-    """Strip all HTML/JS tags from text input."""
     if not text:
         return ''
     text = str(text).strip()
     text = re.sub(r'<[^>]*>', '', text)
-    text = re.sub(r'(?i)\bjavascript\s*:', '', text)
-    text = re.sub(r'(?i)\bdata\s*:', '', text)
+    text = re.sub(r'(?i)\\bjavascript\\s*:', '', text)
+    text = re.sub(r'(?i)\\bdata\\s*:', '', text)
     return text[:2000]
 
 
 def validate_url(url):
-    """Validate and sanitize a URL. Returns sanitized URL or empty string."""
     if not url or not url.strip():
         return ''
     url = url.strip()[:500]
@@ -110,16 +63,10 @@ def validate_url(url):
 
 
 def get_client_ip():
-    """Get client IP from headers, handling proxies."""
     forwarded = request.headers.get('X-Forwarded-For', '')
     if forwarded:
         return forwarded.split(',')[0].strip()
     return request.remote_addr or '0.0.0.0'
-
-
-def hash_ip(ip):
-    """One-way hash of IP for privacy-preserving unique visitor counting."""
-    return hashlib.sha256((ip + 'volunteer-map-salt').encode()).hexdigest()[:16]
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +81,14 @@ def add_security_headers(response):
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     response.headers['Permissions-Policy'] = 'geolocation=(self), camera=(), microphone=()'
     return response
+
+
+from app.semantic_engine import get_engine as get_semantic_engine, build_search_text
+
+# Initialize semantic search engine
+print("Loading semantic search engine (bi-encoder + cross-encoder)...")
+SEMANTIC_ENGINE = get_semantic_engine()
+print(f"✓ Semantic search ready with cross-encoder re-ranking")
 
 
 # ---------------------------------------------------------------------------
@@ -196,98 +151,6 @@ def generate_popup(org):
     if lines:
         parts.append('<div style="margin:4px 0;">' + ' | '.join(lines) + '</div>')
     return ' '.join(parts)
-
-
-# ---------------------------------------------------------------------------
-# Analytics endpoints
-# ---------------------------------------------------------------------------
-
-@app.route('/api/track-view', methods=['POST'])
-def track_view():
-    """Record a page view for analytics. Lightweight, no auth needed."""
-    try:
-        data = request.get_json() or {}
-        ip = get_client_ip()
-        ip_hash = hash_ip(ip)
-        
-        conn = get_db()
-        conn.execute("""
-            INSERT INTO page_views (page_path, referrer, user_agent, ip_hash, screen_width, screen_height)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            sanitize_text(data.get('path', '/')),
-            sanitize_text(data.get('referrer', '')),
-            (request.headers.get('User-Agent', '') or '')[:300],
-            ip_hash,
-            int(data.get('sw', 0)),
-            int(data.get('sh', 0)),
-        ))
-        conn.commit()
-        conn.close()
-        return jsonify({'ok': True})
-    except Exception:
-        return jsonify({'ok': False}), 500
-
-
-@app.route('/api/analytics')
-def get_analytics():
-    """Return analytics summary. Admin endpoint."""
-    conn = get_db()
-    
-    # Total page views
-    total_views = conn.execute("SELECT COUNT(*) FROM page_views").fetchone()[0]
-    
-    # Unique visitors (by IP hash)
-    unique_visitors = conn.execute("SELECT COUNT(DISTINCT ip_hash) FROM page_views").fetchone()[0]
-    
-    # Views today
-    today = datetime.date.today().isoformat()
-    views_today = conn.execute(
-        "SELECT COUNT(*) FROM page_views WHERE date(timestamp) = ?", (today,)
-    ).fetchone()[0]
-    
-    # Views this week
-    week_ago = (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
-    views_week = conn.execute(
-        "SELECT COUNT(*) FROM page_views WHERE date(timestamp) >= ?", (week_ago,)
-    ).fetchone()[0]
-    
-    # Views this month
-    month_ago = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
-    views_month = conn.execute(
-        "SELECT COUNT(*) FROM page_views WHERE date(timestamp) >= ?", (month_ago,)
-    ).fetchone()[0]
-    
-    # Unique visitors this week
-    unique_week = conn.execute(
-        "SELECT COUNT(DISTINCT ip_hash) FROM page_views WHERE date(timestamp) >= ?", (week_ago,)
-    ).fetchone()[0]
-    
-    # Top pages
-    top_pages = conn.execute(
-        "SELECT page_path, COUNT(*) as cnt FROM page_views GROUP BY page_path ORDER BY cnt DESC LIMIT 10"
-    ).fetchall()
-    
-    # Views by day (last 14)
-    days = conn.execute("""
-        SELECT date(timestamp) as day, COUNT(*) as cnt
-        FROM page_views WHERE date(timestamp) >= ?
-        GROUP BY day ORDER BY day
-    """, (month_ago,)).fetchall()
-    
-    conn.close()
-    
-    return jsonify({
-        'total_views': total_views,
-        'unique_visitors': unique_visitors,
-        'views_today': views_today,
-        'views_this_week': views_week,
-        'views_this_month': views_month,
-        'unique_visitors_this_week': unique_week,
-        'top_pages': [dict(p) for p in top_pages],
-        'views_by_day': [{'date': d['day'], 'count': d['cnt']} for d in days],
-        'tracking_since': '2026-05-15',
-    })
 
 
 # ---------------------------------------------------------------------------
@@ -518,7 +381,7 @@ def submit_ecovillage():
         else:
             errors.append('Latitude and longitude are required')
 
-        if email and not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email):
+        if email and not re.match(r'^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$', email):
             errors.append('Invalid email format')
 
         if errors:
@@ -568,7 +431,7 @@ def health_check():
     return jsonify({"status": "healthy", "service": "volunteer-map-flask", "version": "2.0.0"})
 
 
-@app.route('/api-info/')
+@app.route('/api-info/', strict_slashes=False, methods=['GET'])
 def api_info():
     return jsonify({
         "message": "Volunteer Map HTTP Server",
@@ -581,10 +444,6 @@ def api_info():
             },
             "semantic_search": "POST /api/semantic-search",
             "submit_ecovillage": "POST /api/submit-ecovillage",
-            "analytics": {
-                "track_view": "POST /api/track-view",
-                "stats": "GET /api/analytics",
-            },
             "stats": "GET /api/statistics/",
             "health": "GET /api/healthz",
         }

@@ -10,6 +10,7 @@ let filters = {
     longterm: false,
     jobs: false
 };
+let toggleBtn, filterPanel, mapControls; // for responsive drawer
 
 const MARKER_COLOR = '#007bff';
 let searchScores = null; // Map<orgId, {rank, score, pct}> when search is active
@@ -49,6 +50,11 @@ function initMap() {
 
     map.on('click', function() {
         map.closePopup();
+        // On mobile, collapse the drawer when tapping the map
+        if (window.innerWidth <= 768 && mapControls.classList.contains('expanded')) {
+            mapControls.classList.remove('expanded');
+            toggleBtn.classList.remove('rotated');
+        }
     });
 
     map.on('locationfound', function(e) {
@@ -83,10 +89,45 @@ function setupEventListeners() {
         }
     });
 
-    // Filter toggle
-    document.getElementById('filterToggle').addEventListener('click', function() {
-        document.getElementById('filterPanel').classList.toggle('active');
+    // Filter toggle — desktop: show/hide panel, mobile: expand/collapse drawer
+    toggleBtn = document.getElementById('filterToggle');
+    filterPanel = document.getElementById('filterPanel');
+    mapControls = document.querySelector('.map-controls');
+    
+    // Check if we're on mobile
+    const isMobile = window.innerWidth <= 768;
+    
+    // On mobile, use a chevron icon instead of filter icon
+    if (isMobile) {
+        toggleBtn.innerHTML = '<i class="fas fa-chevron-up"></i>';
+    }
+    
+    toggleBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (isMobile) {
+            // Mobile: toggle the drawer expand/collapse
+            mapControls.classList.toggle('expanded');
+            toggleBtn.classList.toggle('rotated');
+        } else {
+            // Desktop: just toggle the filter panel visibility
+            filterPanel.classList.toggle('active');
+        }
     });
+
+    // On mobile, tapping the panel header also expands the drawer
+    if (isMobile) {
+        document.querySelector('.panel-header').addEventListener('click', function(e) {
+            // Don't toggle if they clicked the toggle button itself (already handled)
+            if (e.target.closest('.toggle-btn')) return;
+            mapControls.classList.toggle('expanded');
+            toggleBtn.classList.toggle('rotated');
+        });
+    }
+
+    // On desktop, the panel content starts visible
+    if (!isMobile) {
+        filterPanel.classList.add('active');
+    }
 
     // Reset button
     document.getElementById('resetBtn').addEventListener('click', resetAll);
@@ -115,6 +156,46 @@ function setupEventListeners() {
             clearSemanticSearch();
         }
     });
+
+    // Handle window resize for responsive behavior
+    let lastWidth = window.innerWidth;
+    window.addEventListener('resize', function() {
+        const width = window.innerWidth;
+        // Only act on meaningful width changes (not scrollbar toggles)
+        if (Math.abs(width - lastWidth) > 50) {
+            if (width > 768) {
+                // Switching to desktop: ensure panel is in desktop mode
+                document.querySelector('.map-controls').classList.remove('expanded');
+                document.getElementById('filterPanel').classList.add('active');
+                toggleBtn.innerHTML = '<i class="fas fa-filter"></i>';
+                toggleBtn.classList.remove('rotated');
+            } else {
+                // Switching to mobile: collapse drawer, swap icon
+                document.querySelector('.map-controls').classList.remove('expanded');
+                document.getElementById('filterPanel').classList.remove('active');
+                toggleBtn.innerHTML = '<i class="fas fa-chevron-up"></i>';
+                toggleBtn.classList.remove('rotated');
+            }
+            lastWidth = width;
+        }
+    });
+
+    // On mobile, swipe down on the drawer to collapse it
+    let touchStartY = 0;
+    const controlsEl = document.querySelector('.map-controls');
+    controlsEl.addEventListener('touchstart', function(e) {
+        touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+    controlsEl.addEventListener('touchmove', function(e) {
+        if (!controlsEl.classList.contains('expanded')) return;
+        const deltaY = e.touches[0].clientY - touchStartY;
+        if (deltaY > 80) {
+            // Swiped down far enough — collapse
+            controlsEl.classList.remove('expanded');
+            toggleBtn.classList.remove('rotated');
+            touchStartY = 0;
+        }
+    }, { passive: true });
 }
 
 // ---------------------------------------------------------------------------

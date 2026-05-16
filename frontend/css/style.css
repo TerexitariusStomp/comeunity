@@ -10,6 +10,8 @@ body {
     background-color: #f5f7fa;
     color: #333;
     overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 /* Map Container */
@@ -22,20 +24,85 @@ body {
     z-index: 1;
 }
 
-/* Map Controls */
+/* =============================================================
+   Map Controls (desktop: side panel, mobile: bottom drawer)
+   ============================================================= */
+
 .map-controls {
     position: absolute;
-    top: 20px;
-    left: 20px;
     z-index: 1000;
-    background: rgba(255, 255, 255, 0.95);
+    background: rgba(255, 255, 255, 0.97);
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
     padding: 0;
-    max-width: 320px;
     overflow: hidden;
+    transition: transform 0.3s ease, width 0.3s ease, max-width 0.3s ease;
 }
 
+/* Desktop: side panel on the left */
+@media (min-width: 769px) {
+    .map-controls {
+        top: 20px;
+        left: 20px;
+        max-width: 340px;
+        width: 320px;
+    }
+}
+
+/* Tablet: slightly smaller panel */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .map-controls {
+        width: 280px;
+        max-width: 280px;
+        top: 12px;
+        left: 12px;
+    }
+}
+
+/* Mobile: bottom drawer that slides up
+   On phones the controls panel becomes a floating drawer at the bottom.
+   By default it shows just the header + stats bar (collapsed).
+   Tapping the toggle or swiping up expands it to a full filter panel. */
+@media (max-width: 768px) {
+    .map-controls {
+        top: auto;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        max-width: 100%;
+        border-radius: 16px 16px 0 0;
+        max-height: 55vh;
+        transform: translateY(calc(100% - 56px));
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .map-controls.expanded {
+        transform: translateY(0);
+    }
+
+    /* Overlay when drawer is expanded */
+    .map-controls.expanded::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.3);
+        z-index: -1;
+    }
+}
+
+/* Very small phones */
+@media (max-width: 400px) {
+    .map-controls {
+        max-height: 65vh;
+    }
+}
+
+/* Control Panel */
 .control-panel {
     background: #fff;
     border-bottom: 1px solid #e0e0e0;
@@ -45,9 +112,13 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 16px;
+    padding: 14px 16px;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    min-height: 48px; /* touch-friendly */
 }
 
 .panel-header h3 {
@@ -63,8 +134,37 @@ body {
     border: none;
     color: white;
     cursor: pointer;
-    font-size: 16px;
-    padding: 4px;
+    font-size: 18px;
+    padding: 6px;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.3s ease;
+}
+
+.toggle-btn.rotated {
+    transform: rotate(180deg);
+}
+
+/* Mobile: add a drag handle at the top */
+@media (max-width: 768px) {
+    .panel-header::before {
+        content: '';
+        position: absolute;
+        top: 6px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 36px;
+        height: 4px;
+        background: rgba(255,255,255,0.5);
+        border-radius: 2px;
+    }
+    .panel-header {
+        padding-top: 16px;
+        position: relative;
+    }
 }
 
 .panel-content {
@@ -78,6 +178,14 @@ body {
     display: block;
 }
 
+/* Mobile: panel content takes more space */
+@media (max-width: 768px) {
+    .panel-content {
+        max-height: none;
+        padding: 12px 16px 20px;
+    }
+}
+
 /* Filter Groups */
 .filter-group {
     margin-bottom: 16px;
@@ -86,44 +194,54 @@ body {
 .filter-group label {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     font-size: 14px;
     color: #444;
     cursor: pointer;
-    padding: 4px 0;
+    padding: 8px 0;
+    min-height: 44px; /* touch-friendly tap target */
 }
 
 .filter-group input[type="checkbox"] {
-    size: 14px;
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
     cursor: pointer;
+    flex-shrink: 0;
 }
 
-/* Search Bar */
-.filter-group input[type="text"] {
+/* Search area */
+.filter-group textarea {
     width: 100%;
-    padding: 8px 12px;
+    padding: 10px 12px;
     border: 1px solid #ddd;
     border-radius: 4px;
-    font-size: 14px;
+    font-size: 16px; /* iOS zoom prevention */
     margin: 8px 0;
+    resize: vertical;
+    font-family: inherit;
+    line-height: 1.4;
 }
 
 .btn {
     background: #667eea;
     color: white;
     border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
+    padding: 12px 16px; /* bigger padding for touch */
+    border-radius: 6px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 15px;
     width: 100%;
     transition: background 0.3s;
+    min-height: 44px; /* touch-friendly */
+    -webkit-tap-highlight-color: transparent;
 }
 
 .btn:hover {
     background: #5a67d8;
+}
+
+.btn:active {
+    transform: scale(0.98);
 }
 
 .btn-semantic {
@@ -141,32 +259,56 @@ body {
     color: #999;
     cursor: pointer;
     font-size: 16px;
-    padding: 0 4px;
+    padding: 4px 8px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
 }
 
 .btn-clear:hover {
     color: #666;
 }
 
+.btn-reset {
+    padding: 6px 12px !important;
+    font-size: 12px !important;
+    border: 1px solid #ccc !important;
+    border-radius: 4px !important;
+    background: #f8f9fa !important;
+    color: #333 !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    min-height: 36px !important;
+}
+
 /* Stats Panel */
 .stats-panel {
     display: flex;
     justify-content: space-around;
-    padding: 12px 16px;
+    align-items: center;
+    padding: 10px 16px;
     background: #f8f9fa;
+    gap: 8px;
+}
+
+@media (min-width: 769px) {
+    .stats-panel {
+        padding: 12px 16px;
+    }
 }
 
 .stat-item {
     text-align: center;
+    flex: 1;
 }
 
 .stat-label {
     display: block;
-    font-size: 11px;
+    font-size: 10px;
     color: #666;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
 }
 
 .stat-value {
@@ -178,68 +320,26 @@ body {
 
 /* Organization Popup */
 .org-popup {
-    min-width: 250px;
+    min-width: 220px;
+    max-width: 350px;
 }
 
-.org-name {
-    font-size: 16px;
-    font-weight: 600;
-    color: #333;
-    margin-bottom: 8px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid #eee;
+@media (max-width: 768px) {
+    .org-popup {
+        min-width: 180px;
+        max-width: 280px;
+        font-size: 13px;
+    }
 }
 
-.org-type {
-    font-size: 12px;
-    color: #667eea;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 12px;
-}
-
-.org-description {
-    font-size: 14px;
-    color: #555;
-    line-height: 1.4;
-    margin-bottom: 12px;
-}
-
-.org-contact {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 12px;
-}
-
-.org-contact a {
-    color: #667eea;
-    font-size: 13px;
-    text-decoration: none;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.org-actions {
-    display: flex;
-    justify-content: flex-end;
-}
-
-.view-details-btn {
-    background: #48bb78;
-    color: white;
-    border: none;
-    padding: 6px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    transition: background 0.3s;
-}
-
-.view-details-btn:hover {
-    background: #38a169;
+/* Leaflet popup adjustments */
+@media (max-width: 768px) {
+    .leaflet-popup-content-wrapper {
+        font-size: 13px !important;
+    }
+    .leaflet-popup-content {
+        margin: 10px 14px !important;
+    }
 }
 
 /* Modal Styles */
@@ -249,7 +349,7 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.6);
     display: none;
     justify-content: center;
     align-items: center;
@@ -262,22 +362,40 @@ body {
 
 .modal-content {
     background: white;
-    border-radius: 8px;
+    border-radius: 12px;
     width: 90%;
-    max-width: 500px;
-    max-height: 90vh;
+    max-width: 520px;
+    max-height: 85vh;
     overflow-y: auto;
     position: relative;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Mobile: full-screen modal */
+@media (max-width: 768px) {
+    .modal-content {
+        width: 100%;
+        max-width: 100%;
+        max-height: 100vh;
+        height: 100%;
+        border-radius: 0;
+    }
 }
 
 .close-modal {
     position: absolute;
     top: 12px;
     right: 16px;
-    font-size: 24px;
+    font-size: 28px;
     cursor: pointer;
     color: #666;
     transition: color 0.3s;
+    z-index: 1;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .close-modal:hover {
@@ -288,6 +406,12 @@ body {
     padding: 24px;
 }
 
+@media (max-width: 768px) {
+    .modal-body {
+        padding: 20px 16px 32px;
+    }
+}
+
 /* Loading Indicator */
 .loading {
     position: fixed;
@@ -295,16 +419,16 @@ body {
     left: 50%;
     transform: translate(-50%, -50%);
     background: rgba(255, 255, 255, 0.95);
-    padding: 20px 30px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    padding: 24px 32px;
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
     text-align: center;
     z-index: 3000;
 }
 
 .spinner {
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     margin: 0 auto 12px;
     border: 3px solid #f3f3f3;
     border-top: 3px solid #667eea;
@@ -317,176 +441,82 @@ body {
     100% { transform: rotate(360deg); }
 }
 
-/* Semantic Search */
+/* =============================================================
+   Submit form on mobile
+   ============================================================= */
+@media (max-width: 768px) {
+    #submitForm input,
+    #submitForm textarea {
+        font-size: 16px !important; /* prevent iOS zoom on focus */
+    }
+}
+
+/* =============================================================
+   Submit link
+   ============================================================= */
+#submitLink {
+    font-size: 12px;
+    color: #888;
+    text-decoration: none;
+}
+
+@media (max-width: 768px) {
+    #submitLink {
+        font-size: 14px;
+        display: block;
+        padding: 10px 0;
+    }
+}
+
+/* =============================================================
+   Semantic search results (rendered on map only — no list)
+   ============================================================= */
 .semantic-search-group {
     border-top: 2px solid #e8f5f0;
     padding-top: 12px;
     margin-top: 8px;
 }
 
-.semantic-results {
-    margin-top: 12px;
-    background: #f8f9fa;
-    border-radius: 6px;
-    padding: 12px;
-    max-height: 400px;
-    overflow-y: auto;
-}
-
-.semantic-results-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid #e0e0e0;
-}
-
-#semanticResultsCount {
-    font-size: 13px;
-    font-weight: 600;
-    color: #333;
-}
-
-.semantic-result-item {
-    background: white;
-    border-radius: 6px;
-    padding: 12px;
-    margin-bottom: 10px;
-    border-left: 4px solid #38ef7d;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.semantic-result-item:hover {
-    transform: translateX(2px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-}
-
-.semantic-result-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 6px;
-}
-
-.semantic-rank {
-    font-weight: 700;
-    color: #11998e;
-    font-size: 13px;
-}
-
-.semantic-score {
-    font-size: 12px;
-    font-weight: 600;
-    color: #38ef7d;
-    background: #e8f5f0;
-    padding: 2px 8px;
-    border-radius: 10px;
-}
-
-.semantic-result-name {
-    font-weight: 600;
-    font-size: 14px;
-    color: #333;
-    margin-bottom: 4px;
-}
-
-.semantic-result-location {
-    font-size: 12px;
-    color: #666;
-    margin-bottom: 8px;
-}
-
-.semantic-result-badges {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-bottom: 8px;
-}
-
-.badge {
-    font-size: 10px;
-    padding: 2px 6px;
-    border-radius: 3px;
-    color: white;
-    font-weight: 500;
-}
-
-.badge-volunteer { background: #ffc107; color: black; }
-.badge-shortterm { background: #17a2b8; }
-.badge-longterm { background: #17a2b8; }
-.badge-jobs { background: #dc3545; }
-
-.semantic-result-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 8px;
-}
-
-.btn-semantic-view {
-    flex: 1;
-    background: #48bb78;
-    color: white;
-    border: none;
-    padding: 6px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-}
-
-.btn-semantic-view:hover {
-    background: #38a169;
-}
-
-.btn-semantic-focus {
-    flex: 1;
-    background: #667eea;
-    color: white;
-    border: none;
-    padding: 6px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-}
-
-.btn-semantic-focus:hover {
-    background: #5a67d8;
-}
-
-.semantic-loading,
-.semantic-error,
-.semantic-empty {
-    text-align: center;
-    padding: 20px;
-    color: #666;
-    font-size: 14px;
-}
-
-.semantic-error {
-    color: #dc3545;
-}
-
-/* Responsive Design */
-@media (max-width: 768px) {
+/* =============================================================
+   Landscape phone optimization
+   ============================================================= */
+@media (max-width: 768px) and (orientation: landscape) {
     .map-controls {
-        width: 90%;
-        left: 5%;
-        top: 10px;
+        max-height: 80vh;
     }
-    
-    .stats-panel {
-        display: none;
+    .panel-content {
+        padding: 10px 16px 16px;
     }
-    
-    .modal-content {
-        width: 95%;
-        max-width: 90%;
+    .filter-group {
+        margin-bottom: 8px;
+    }
+    .filter-group label {
+        padding: 4px 0;
+        min-height: 36px;
     }
 }
 
+/* =============================================================
+   Small height screens
+   ============================================================= */
 @media (max-height: 600px) {
     .panel-content {
-        max-height: 150px;
+        max-height: 40vh;
+    }
+    .stats-panel {
+        padding: 6px 12px;
+    }
+    .stat-value {
+        font-size: 15px;
+    }
+    .panel-header {
+        padding: 10px 14px;
+        min-height: 40px;
+    }
+}
+
+@media (max-height: 600px) and (min-width: 769px) {
+    .panel-content {
+        max-height: 200px;
     }
 }

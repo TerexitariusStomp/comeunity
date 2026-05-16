@@ -45,6 +45,10 @@
                     <a id="submitLink" href="#" style="font-size:12px;color:#888;text-decoration:none;" title="Add an ecovillage not yet on the map">
                         <i class="fas fa-plus-circle"></i> Submit an Ecovillage
                     </a>
+                    &nbsp;&middot;&nbsp;
+                    <a href="/privacy.html" style="font-size:12px;color:#888;text-decoration:none;">
+                        <i class="fas fa-shield-alt"></i> Privacy
+                    </a>
                 </div>
             </div>
         </div>
@@ -113,23 +117,101 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
-    <script src="js/app.js?v=22"></script>
-    <!-- Analytics beacon -->
+    <script src="js/app.js?v=24"></script>
+    <!-- Matomo -->
     <script>
-    (function(){
-        fetch('/api/track-view', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({
-                path: window.location.pathname,
-                referrer: document.referrer || '',
-                sw: screen.width,
-                sh: screen.height,
-            }),
-            // Fire-and-forget: no need to wait for response
-            keepalive: true
-        }).catch(function(){});
-    })();
+        var _paq = window._paq = window._paq || [];
+        
+        // Require consent before tracking (GDPR-friendly)
+        _paq.push(['requireConsent']);
+        
+        // Track everything
+        _paq.push(['enableHeartBeatTimer', 15]);          // ping every 15s for accurate time-on-page
+        _paq.push(['enableLinkTracking', true]);           // track all link clicks
+        _paq.push(['setDownloadExtensions', 'pdf|docx?|xlsx?|pptx?|zip|gz|bz2|7z|rar|tar|jpg|png|gif|mp3|mp4|avi|mov|wmv|flv|webm']); // track downloads
+        _paq.push(['trackPageView']);
+        _paq.push(['enableJSErrorTracking']);              // track JS errors
+        _paq.push(['trackPagePerformance']);               // track page load performance (TTFB, DOM, etc.)
+        _paq.push(['trackAllContentImpressions']);         // track content blocks
+        
+        // Privacy: respect Do Not Track
+        _paq.push(['setDoNotTrack', true]);
+        
+        (function() {
+            var u="//analytics.volunteer.templeearth.cc/";
+            _paq.push(['setTrackerUrl', u+'matomo.php']);
+            _paq.push(['setSiteId', '1']);
+            var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+            g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+        })();
+        
+        // Track semantic search queries as site searches
+        document.addEventListener('click', function(e) {
+            if (e.target.id === 'semanticSearchBtn') {
+                var query = document.getElementById('semanticQuery')?.value?.trim();
+                if (query && query.length > 2) {
+                    _paq.push(['trackSiteSearch', query, 'semantic', false]);
+                }
+            }
+        });
+        
+        // Track ecovillage submissions as goals
+        document.addEventListener('submit', function(e) {
+            if (e.target.id === 'submitForm') {
+                _paq.push(['trackGoal', 1]);
+            }
+        });
     </script>
+    <!-- End Matomo Code -->
+    
+    <!-- Privacy consent banner -->
+    <div id="consentBanner" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#fff;border-top:2px solid #667eea;box-shadow:0 -4px 16px rgba(0,0,0,0.15);padding:16px 20px;font-family:'Segoe UI',sans-serif;">
+        <div style="max-width:900px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:12px;">
+            <div style="flex:1;min-width:200px;font-size:13px;color:#555;line-height:1.4;">
+                <strong style="color:#333;">This site uses analytics cookies</strong><br>
+                We use self-hosted Matomo to understand how the map is used. No data is shared with third parties.
+                <a href="/privacy.html" style="color:#667eea;text-decoration:underline;white-space:nowrap;">Learn more</a>
+            </div>
+            <div style="display:flex;gap:8px;flex-shrink:0;">
+                <button id="consentAccept" style="background:#667eea;color:white;border:none;padding:10px 22px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;min-height:44px;">Accept</button>
+                <button id="consentDecline" style="background:#f0f0f0;color:#555;border:1px solid #ddd;padding:10px 22px;border-radius:6px;cursor:pointer;font-size:14px;min-height:44px;">Decline</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        // Consent banner logic
+        (function() {
+            var CONSENT_COOKIE = 'mtm_consent_removed';
+            var banner = document.getElementById('consentBanner');
+            
+            // Check if user already made a choice
+            function getCookie(name) {
+                var match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+                return match ? match.pop() : null;
+            }
+            
+            // Show banner if no consent decision has been made
+            if (!getCookie('mtm_consent') && !getCookie(CONSENT_COOKIE)) {
+                banner.style.display = 'block';
+            }
+            
+            // Accept
+            document.getElementById('consentAccept').addEventListener('click', function() {
+                _paq.push(['rememberConsentGiven']);
+                banner.style.display = 'none';
+            });
+            
+            // Decline
+            document.getElementById('consentDecline').addEventListener('click', function() {
+                _paq.push(['forgetConsentGiven']);
+                // Set a cookie so the banner doesn't show again
+                var d = new Date();
+                d.setTime(d.getTime() + 30*24*60*60*1000);
+                document.cookie = CONSENT_COOKIE + '=1; expires=' + d.toUTCString() + '; path=/';
+                banner.style.display = 'none';
+            });
+        })();
+    </script>
+    <!-- End consent banner -->
 </body>
 </html>
