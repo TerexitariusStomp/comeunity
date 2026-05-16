@@ -76,7 +76,9 @@ CREATE TABLE IF NOT EXISTS ip_enrichments (
     th_dns_servers TEXT,
     th_open_ports TEXT,
     th_associated_urls TEXT,
-    th_banners TEXT
+    th_banners TEXT,
+    th_emails TEXT,
+    th_social_media TEXT
 );
 """
 
@@ -105,8 +107,7 @@ def ensure_schema():
             "sf_open_ports": "TEXT", "sf_hosting_provider": "TEXT", "sf_reverse_domains": "TEXT",
             "sf_proxy_vpn": "TEXT", "sf_ssl_cert": "TEXT", "sf_reputation_risk": "TEXT",
             "sf_bgp_asn": "TEXT", "sf_bgp_cidr": "TEXT", "sf_threat_scores": "TEXT",
-            "th_reverse_dns": "TEXT", "th_virtual_hosts": "TEXT", "th_dns_servers": "TEXT",
-            "th_open_ports": "TEXT", "th_associated_urls": "TEXT", "th_banners": "TEXT",
+            "th_emails": "TEXT", "th_social_media": "TEXT",
         }
         for col, coltype in additions.items():
             if col not in existing_cols:
@@ -165,30 +166,57 @@ def enrich_chickadee_ipapi(ip):
 # Tier 2a: theHarvester (reverse DNS, virtual hosts, ports)
 # ---------------------------------------------------------------------------
 def enrich_theharvester(ip):
-    """Run theHarvester against an IP for reverse DNS and host discovery."""
+    """Run theHarvester against an IP for reverse DNS, emails, and social media discovery."""
     try:
-        # theHarvester's -d flag expects a domain, but we can use IP-based search
-        # Use dns reverse lookup, bing, etc.
+        # Use multiple search sources: dns + bing + duckduckgo + hunter + censys
+        sources = "dns,bing,duckduckgo,hunter,censys"
         result = subprocess.run(
-            ["uv", "run", "theHarvester", "-d", ip, "-b", "dns,bing,duckduckgo", "-l", "20"],
-            capture_output=True, text=True, timeout=60,
+            ["uv", "run", "theHarvester", "-d", ip, "-b", sources, "-l", "50"],
+            capture_output=True, text=True, timeout=120,
             cwd=THEHARVESTER_PATH
         )
         output = result.stdout + result.stderr
         
         data = {}
+        
+        # Reverse DNS hosts
         hosts = re.findall(r'(?:Host|IP):\s*(\S+)', output)
         vhosts = [h for h in hosts if h != ip]
         if vhosts:
             data["th_reverse_dns"] = ", ".join(vhosts[:20])
         
+        # URLs
         urls = re.findall(r'https?://[^\s"\']+', output)
         if urls:
             data["th_associated_urls"] = ", ".join(urls[:20])
         
+        # Emails from theHarvester output
+        emails = re.findall(r'[\w.+-]+@[\w-]+\.[\w.+-]+', output)
+        if emails:
+            data["th_emails"] = ", ".join(set(emails[:50]))
+            print(f"    ✓ Found emails: {len(set(emails))}")
+        
+        # Social media handles / profiles
+        social_patterns = [
+            r'(facebook\.com/[\w.]+)',
+            r'(twitter\.com/[\w_]+)',
+            r'(linkedin\.com/(?:company|in)/[\w-]+)',
+            r'(instagram\.com/[\w_.]+)',
+            r'(github\.com/[\w-]+)',
+            r'(youtube\.com/@?[\w-]+)',
+            r'(tiktok\.com/@?[\w.]+)',
+        ]
+        social_found = []
+        for pat in social_patterns:
+            matches = re.findall(pat, output, re.IGNORECASE)
+            social_found.extend(matches[:5])
+        if social_found:
+            data["th_social_media"] = ", ".join(set(social_found[:20]))
+            print(f"    ✓ Social profiles: {len(set(social_found))}")
+        
         return data
     except Exception as e:
-        print(f"  theHarvester error: {e}")
+        print(f"  ✗ theHarvester error: {e}")
         return None
 
 
