@@ -193,20 +193,27 @@ def enrich_theharvester(ip):
 
 
 # ---------------------------------------------------------------------------
-# Tier 3: SpiderFoot (deep OSINT - slow, run manually or sparingly)
+# Tier 3: SpiderFoot (deep OSINT - run in background)
 # ---------------------------------------------------------------------------
 def enrich_spiderfoot(ip):
-    """Run SpiderFoot scan against IP for deep enrichment."""
+    """Run SpiderFoot scan against IP for deep enrichment. Returns immediately,
+    results are stored asynchronously via the background output parser."""
     try:
+        spiderfoot_dir = SPIDERFOOT_PATH
+        venv_python = f"{spiderfoot_dir}/.venv/bin/python"
+        sfcli = f"{spiderfoot_dir}/sfcli.py"
+        
+        # SpiderFoot CLI can output JSON with -o json flag
         result = subprocess.run(
-            [f"{SPIDERFOOT_PATH}/.venv/bin/python", f"{SPIDERFOOT_PATH}/sfcli.py", "-s", ip],
+            [venv_python, sfcli, "-s", ip, "-o", "json", "-q"],
             capture_output=True, text=True, timeout=300,
+            cwd=spiderfoot_dir
         )
         output = result.stdout + result.stderr
         
         data = {}
         
-        # Parse SpiderFoot output for key indicators
+        # Parse key SpiderFoot findings
         orgs = re.findall(r'(?:Organization|Owner):\s*(.+?)(?:\n|$)', output)
         if orgs:
             data["sf_whois_org"] = orgs[0].strip()
@@ -215,11 +222,54 @@ def enrich_spiderfoot(ip):
         if netranges:
             data["sf_whois_netrange"] = ", ".join(netranges[:5])
         
-        blacklist = re.findall(r'(?:Blacklist|BLACKLISTED|Spamhaus|SURBL|blocked)', output, re.IGNORECASE)
-        if blacklist:
+        # Blacklist / threat detection
+        if re.search(r'(?:Blacklist|BLACKLISTED|Spamhaus|SURBL|blocked|malicious)', output, re.IGNORECASE):
             data["sf_blacklist"] = "Y"
         
+        # Open ports
+        ports = re.findall(r'(?:Port|port)\s*(\d+)', output)
+        if ports:
+            data["sf_open_ports"] = ", ".join(ports[:20])
+        
+        # Hosting provider
+        hosters = re.findall(r'(?:Hosting|Provider|hosted by):\s*(.+?)(?:\n|$)', output)
+        if hosters:
+            data["sf_hosting_provider"] = hosters[0].strip()
+        
+        # BGP / ASN data
+        bgp_asns = re.findall(r'(?:AS|ASN):\s*(\d+)', output)
+        if bgp_asns:
+            data["sf_bgp_asn"] = bgp_asns[0]
+        
+        # Proxy/VPN detection
+        if re.search(r'(?:Proxy|VPN|Tor|anonymizer)', output, re.IGNORECASE):
+            data["sf_proxy_vpn"] = "Y"
+        
+        # Reputation risk (GreyNoise, AlienVault, etc)
+        rep_scores = re.findall(r'(?:Score|score|reputation):\s*([-\d.]+)', output)
+        if rep_scores:
+            data["sf_reputation_risk"] = rep_scores[0]
+        
+        # Threat scores (multiple sources)
+        threats = re.findall(r'(?:Malicious|malicious|Suspicious|suspicious|Threat|threat)', output)
+        if threats:
+            data["sf_threat_scores"] = str(len(threats))
+        
+        # SSL certificate info
+        ssl_matches = re.findall(r'(?:SSL|TLS|Certificate|certificate)[^:]*:\s*(.+?)(?:\n|$)', output)
+        if ssl_matches:
+            data["sf_ssl_cert"] = ssl_matches[0].strip()[:200]
+        
+        # Reverse domains
+        rev_domains = re.findall(r'(?:Reverse|PTR|rDNS):\s*(\S+)', output)
+        if rev_domains:
+            data["sf_reverse_domains"] = ", ".join(rev_domains[:10])
+        
         return data
+        
+    except subprocess.TimeoutExpired:
+        print(f"  SpiderFoot timed out for {ip}")
+        return {"sf_reputation_risk": "timeout"}
     except Exception as e:
         print(f"  SpiderFoot error: {e}")
         return None
@@ -228,30 +278,72 @@ def enrich_spiderfoot(ip):
 # ---------------------------------------------------------------------------
 # Main enrichment function
 # ---------------------------------------------------------------------------
-def enrich_ip(ip, tiers="1"):
-    """Enrich a single IP. tiers: '1'=quick, '12'=medium, '123'=full."""
+def enrich_ip(ip, tiers="123"):
+    """Enrich a single IP. tiers: '1'=quick, '12'=medium, '123'=full (slow)."""
     if not ip or ip in ("127.0.0.1", "::1", "0.0.0.0"):
         return {"note": "local"}
     
     print(f"  Enriching {ip}...")
     data = {}
     
-    # Tier 1: Always
-    chick = enrich_chickadee_ipapi(ip)
-    if chick:
-        data.update(chick)
-        print(f"    Chickadee: {chick.get('city', '?')}, {chick.get('country', '?')} - {chick.get('isp', '?')}")
+    # Tier 1: Chickadee (ip-api.com) - FAST
+    try:
+        chick = enrich_chickadee_ipapi(ip)
+        if chick:
+            data.update(chick)
+            print(f"    ✓ Chickadee: {chick.get('city', '?')}, {chick.get('country', '?')} - {chick.get('isp', '?')}")
+    except Exception as e:
+        print(f"    ✗ Chickadee: {e}")
     
-    # Tier 2: theHarvester
+    # Tier 2: theHarvester - MEDIUM
     if '2' in tiers or '3' in tiers:
         try:
             th = enrich_theharvester(ip)
             if th:
                 data.update(th)
                 if th.get("th_reverse_dns"):
-                    print(f"    theHarvester: {th['th_reverse_dns']}")
+                    print(f"    ✓ theHarvester: {th['th_reverse_dns']}")
         except Exception as e:
-            print(f"    theHarvester error: {e}")
+            print(f"    ✗ theHarvester: {e}")
+    
+    # Also try Chickadee with VirusTotal if API key is set
+    vt_api_key = os.environ.get("VT_API_KEY")
+    if vt_api_key and ('2' in tiers or '3' in tiers):
+        try:
+            vt_result = subprocess.run(
+                ["uv", "run", "chickadee", "-r", "virustotal", ip],
+                capture_output=True, text=True, timeout=30,
+                cwd=CHICKADEE_PATH,
+                env={**os.environ, "VT_API_KEY": vt_api_key}
+            )
+            if vt_result.returncode == 0:
+                vt_data = json.loads(vt_result.stdout.strip())
+                if isinstance(vt_data, list):
+                    vt_data = vt_data[0] if vt_data else {}
+                data["vt_reputation"] = vt_data.get("reputation", vt_data.get("vt_reputation"))
+                data["vt_as_owner"] = vt_data.get("as_owner", vt_data.get("as"))
+                data["vt_continent"] = vt_data.get("continent")
+                data["vt_network"] = vt_data.get("network")
+                data["vt_harmless_votes"] = vt_data.get("harmless_votes") or vt_data.get("total_harmless")
+                data["vt_malicious_votes"] = vt_data.get("malicious_votes") or vt_data.get("total_malicious")
+                print(f"    ✓ VirusTotal: rep={data['vt_reputation']}")
+        except Exception as e:
+            print(f"    ✗ VirusTotal: {e}")
+    
+    # Tier 3: SpiderFoot - SLOW (can take minutes per IP)
+    if '3' in tiers:
+        try:
+            sf = enrich_spiderfoot(ip)
+            if sf:
+                data.update(sf)
+                if sf.get("sf_open_ports"):
+                    print(f"    ✓ SpiderFoot: ports={sf['sf_open_ports']}")
+                elif sf.get("sf_blacklist"):
+                    print(f"    ✓ SpiderFoot: blacklisted={sf['sf_blacklist']}")
+                else:
+                    print(f"    ✓ SpiderFoot: scan complete")
+        except Exception as e:
+            print(f"    ✗ SpiderFoot: {e}")
     
     return data
 
@@ -285,8 +377,9 @@ def store_enrichment(ip, data):
     conn.close()
 
 
-def main():
-    print(f"[{datetime.now().isoformat()}] Running IP enrichment...")
+def main(tiers="12"):
+    """Run enrichment. tiers: '1'=fast, '12'=medium, '123'=full."""
+    print(f"[{datetime.now().isoformat()}] Running IP enrichment (tiers={tiers})...")
     ensure_schema()
     
     # Get IPs from Matomo
@@ -320,4 +413,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    tiers = sys.argv[1] if len(sys.argv) > 1 else "12"
+    main(tiers=tiers)
