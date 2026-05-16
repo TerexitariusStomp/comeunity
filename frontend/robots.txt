@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Allow: /css/
+Allow: /js/
+Allow: /analytics/
+Disallow: /api/
+Disallow: /*.db
+Disallow: /*.pkl
+
+Sitemap: https://volunteer.templeearth.cc/sitemap.xml

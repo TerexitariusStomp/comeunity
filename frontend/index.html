@@ -3,10 +3,62 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Global Ecovillage Map - volunteer.templeearth.cc</title>
+    <title>Global Ecovillage Map — Find Intentional Communities, Eco-Villages & Volunteering</title>
+    <meta name="description" content="Discover 7,000+ ecovillages and intentional communities worldwide. Find places accepting volunteers, visitors, and residents. Permaculture, organic farming, sustainable living.">
+    <meta name="keywords" content="ecovillage map, intentional communities, eco villages, permaculture, sustainable living, volunteer opportunities, community living, organic farming, off-grid, homesteading">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#667eea">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Ecovillage Map">
+    
+    <!-- Canonical -->
+    <link rel="canonical" href="https://volunteer.templeearth.cc/">
+    
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://volunteer.templeearth.cc/">
+    <meta property="og:title" content="Global Ecovillage Map — Find Intentional Communities Worldwide">
+    <meta property="og:description" content="Discover 7,000+ ecovillages and intentional communities. Volunteer, visit, or find your next home. Permaculture, organic farming, sustainable living.">
+    <meta property="og:site_name" content="Global Ecovillage Map">
+    <meta property="og:locale" content="en_US">
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Global Ecovillage Map — Find Intentional Communities">
+    <meta name="twitter:description" content="Discover 7,000+ ecovillages worldwide. Permaculture, volunteering, sustainable living.">
+    
+    <!-- Hreflang -->
+    <link rel="alternate" hreflang="en" href="https://volunteer.templeearth.cc/">
+    <link rel="alternate" hreflang="x-default" href="https://volunteer.templeearth.cc/">
+
+    <!-- Preconnect -->
+    <link rel="preconnect" href="https://unpkg.com">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link rel="preconnect" href="https://volunteer.templeearth.cc">
+    
+    <!-- Styles -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="css/style.css">
+    
+    <!-- JSON-LD Structured Data -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Global Ecovillage Map",
+        "url": "https://volunteer.templeearth.cc/",
+        "description": "Interactive map of 7,000+ ecovillages and intentional communities worldwide. Filter by volunteer opportunities, short/long-term stays, and jobs.",
+        "applicationCategory": "TravelApplication",
+        "operatingSystem": "Web",
+        "browserRequirements": "Requires JavaScript",
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+        }
+    }
+    </script>
 </head>
 <body>
     <div id="map"></div>
@@ -168,7 +220,29 @@
     </script>
     <!-- End Matomo Code -->
     
-    <!-- Privacy consent banner -->
+    <!-- OpenReplay - Session Recording & Heatmaps (if project key is set) -->
+    <script>
+    (function() {
+        var projectKey = localStorage.getItem('openreplay_project_key');
+        if (projectKey && projectKey.length > 8) {
+            var script = document.createElement('script');
+            script.src = '/analytics/openreplay.js';
+            script.async = true;
+            script.onload = function() {
+                if (window.OpenReplay) {
+                    window.OpenReplay.init({
+                        projectKey: projectKey,
+                        ingestPoint: 'https://volunteer.templeearth.cc/analytics/ingest'
+                    });
+                }
+            };
+            document.head.appendChild(script);
+        }
+    })();
+    </script>
+    <!-- End OpenReplay -->
+    
+    <!-- Consent banner -->
     <div id="consentBanner" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#fff;border-top:2px solid #667eea;box-shadow:0 -4px 16px rgba(0,0,0,0.15);padding:16px 20px;font-family:'Segoe UI',sans-serif;">
         <div style="max-width:900px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:12px;">
             <div style="flex:1;min-width:200px;font-size:13px;color:#555;line-height:1.4;">
