@@ -307,26 +307,39 @@ def enrich_ip(ip, tiers="123"):
             print(f"    ✗ theHarvester: {e}")
     
     # Also try Chickadee with VirusTotal if API key is set
-    vt_api_key = os.environ.get("VT_API_KEY")
+    vt_api_key = os.environ.get("VT_API_KEY", "94ea215b1138aa1d3c1d933b4ff9d53f1293f83ee28734d4746b28f6b2d91d01")
     if vt_api_key and ('2' in tiers or '3' in tiers):
         try:
+            import tempfile, os as _os
+            # Create a temp config file for Chickadee with the VT key
+            config_content = f"""[chickadee]
+resolver = virustotal
+virustotal = {vt_api_key}
+"""
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.ini', delete=False) as f:
+                f.write(config_content)
+                config_path = f.name
+            
             vt_result = subprocess.run(
-                ["uv", "run", "chickadee", "-r", "virustotal", ip],
+                ["uv", "run", "chickadee", "-c", config_path, ip],
                 capture_output=True, text=True, timeout=30,
-                cwd=CHICKADEE_PATH,
-                env={**os.environ, "VT_API_KEY": vt_api_key}
+                cwd=CHICKADEE_PATH
             )
-            if vt_result.returncode == 0:
-                vt_data = json.loads(vt_result.stdout.strip())
+            _os.unlink(config_path)
+            
+            if vt_result.returncode == 0 and vt_result.stdout.strip():
+                vt_data_raw = vt_result.stdout.strip()
+                # Parse - chickadee returns json array
+                vt_data = json.loads(vt_data_raw)
                 if isinstance(vt_data, list):
                     vt_data = vt_data[0] if vt_data else {}
-                data["vt_reputation"] = vt_data.get("reputation", vt_data.get("vt_reputation"))
-                data["vt_as_owner"] = vt_data.get("as_owner", vt_data.get("as"))
+                data["vt_reputation"] = vt_data.get("reputation")
+                data["vt_as_owner"] = vt_data.get("as_owner") or vt_data.get("as")
                 data["vt_continent"] = vt_data.get("continent")
                 data["vt_network"] = vt_data.get("network")
                 data["vt_harmless_votes"] = vt_data.get("harmless_votes") or vt_data.get("total_harmless")
                 data["vt_malicious_votes"] = vt_data.get("malicious_votes") or vt_data.get("total_malicious")
-                print(f"    ✓ VirusTotal: rep={data['vt_reputation']}")
+                print(f"    ✓ VirusTotal: rep={data.get('vt_reputation')}")
         except Exception as e:
             print(f"    ✗ VirusTotal: {e}")
     
