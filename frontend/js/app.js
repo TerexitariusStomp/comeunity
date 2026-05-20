@@ -32,7 +32,21 @@ document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
     loadOrganizations();
     updateStatistics();
+    // Load embedding index and init WebLLM in background
+    initSearch();
 });
+
+async function initSearch() {
+    try {
+        embeddingIndex = await loadEmbeddingIndex();
+        showToast('AI search ready — loading embedding model...', false);
+        webllmEngine = await initWebLLMEngine();
+        showToast('AI search ready! Describe what you\'re looking for.', false);
+    } catch (err) {
+        console.error('Search init failed:', err);
+        showToast('AI search unavailable (WebGPU may not be supported)', true);
+    }
+}
 
 function initMap() {
     map = L.map('map', {
@@ -486,7 +500,89 @@ function showToast(msg, isError) {
 }
 
 async function performSemanticSearch() {
-    showToast('AI search requires the backend server. Visit volunteer.templeearth.cc for full search.', true);
+    const queryInput = document.getElementById('semanticQuery');
+    const query = queryInput.value.trim();
+
+    if (!query) {
+        alert('Please describe what you are looking for.');
+        return;
+    }
+
+    if (!embeddingIndex) {
+        showToast('Still loading embeddings, please wait...', true);
+        return;
+    }
+
+    if (!webllmEngine) {
+        showToast('AI model still loading, please wait...', true);
+        return;
+    }
+
+    const country = extractLocationFromQuery(query);
+    const btn = document.getElementById('semanticSearchBtn');
+    const toast = document.getElementById('semanticToast');
+
+    // Clear previous search
+    searchScores = null;
+    searchResultIds = null;
+    isSearchActive = false;
+
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Searching...';
+    btn.disabled = true;
+    toast.style.display = 'none';
+
+    try {
+        const results = await searchEmbeddings(query, 200);
+
+        if (results.length > 0) {
+            isSearchActive = true;
+
+            searchScores = {};
+            searchResultIds = results.map(r => r.id);
+            const total = results.length;
+            results.forEach((r, idx) => {
+                const pct = total > 1
+                    ? Math.round(5 + 94 * (1 - idx / (total - 1)))
+                    : 99;
+                searchScores[r.id] = {
+                    rank: idx + 1,
+                    score: r.score,
+                    pct: pct,
+                    total: total
+                };
+            });
+
+            visibleOrganizations = allOrganizations.filter(org => searchResultIds.includes(org.id));
+            filterOrganizations();
+            updateMarkers();
+
+            if (results.length === 1) {
+                map.setView([results[0].lat, results[0].lon], 10);
+            } else {
+                const bounds = L.latLngBounds(results.map(r => [r.lat, r.lon]));
+                map.fitBounds(bounds, { padding: [50, 50] });
+            }
+
+            let msg = `Found ${results.length} matching location${results.length !== 1 ? 's' : ''}`;
+            if (country) msg += ` in ${country}`;
+            msg += ' · red=best match → blue';
+            showToast(msg, false);
+        } else {
+            isSearchActive = false;
+            let msg = 'No matching locations found';
+            if (country) msg += ` in ${country}`;
+            msg += '. Try a different description.';
+            showToast(msg, false);
+        }
+
+    } catch (error) {
+        console.error('Semantic search error:', error);
+        showToast('Search failed. Please try again.', true);
+    } finally {
+        btn.innerHTML = '<i class="fas fa-search"></i> Find Matching Locations';
+        btn.disabled = false;
+        updateResetButton();
+    }
 }
 
 function clearSemanticSearch() {

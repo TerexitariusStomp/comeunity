@@ -1,44 +1,7 @@
-# Python
+node_modules/
+embed-scripts/node_modules/
+*.db
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-venv/
-env/
-*.egg-info/
-
-# Data files (large, derived)
-*.json
-*.csv
-!volunteer_map_data.json
-!volunteer_map.html
-!data/**
-!backend/organizations.db
-*.log
-
-# OS
+*.pyc
 .DS_Store
 Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Temp files
-temp_*
-sample_*.html
-
-# Secrets
-backend/.env
-backend/.env.*
-!.env.example
-*.pem
-*.key
-
-# Stale DB copies
-backend/app/organizations.db
-backend/organizations.db.bak
-*.pyc

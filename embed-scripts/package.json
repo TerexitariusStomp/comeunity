@@ -1,0 +1,16 @@
+{
+  "name": "embed-scripts",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@mlc-ai/web-llm": "^0.2.83",
+    "better-sqlite3": "^12.10.0"
+  }
+}
