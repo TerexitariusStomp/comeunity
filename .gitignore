@@ -13,6 +13,8 @@ env/
 *.csv
 !volunteer_map_data.json
 !volunteer_map.html
+!data/**
+!backend/organizations.db
 *.log
 
 # OS
