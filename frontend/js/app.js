@@ -224,7 +224,7 @@ function extractLocationFromQuery(query) {
 async function loadOrganizations() {
     showLoading(true);
     try {
-        const response = await fetch('/api/organizations/geojson/');
+        const response = await fetch('data/organizations.geojson');
         if (!response.ok) {
             throw new Error('HTTP error! status: ' + response.status);
         }
@@ -460,57 +460,7 @@ function closeSubmitModal() {
 
 async function handleSubmit(e) {
     e.preventDefault();
-    const btn = document.getElementById('submitBtn');
-    const errDiv = document.getElementById('submitError');
-    
-    const payload = {
-        name: document.getElementById('subName').value.trim(),
-        description: document.getElementById('subDesc').value.trim(),
-        city: document.getElementById('subCity').value.trim(),
-        country: document.getElementById('subCountry').value.trim(),
-        website: document.getElementById('subWebsite').value.trim(),
-        email: document.getElementById('subEmail').value.trim(),
-        latitude: parseFloat(document.getElementById('subLat').value),
-        longitude: parseFloat(document.getElementById('subLng').value),
-        accepts_volunteers: document.getElementById('subVolunteers').checked,
-        accepts_visitors: document.getElementById('subVisitors').checked,
-        accepts_shortterm: document.getElementById('subShortterm').checked,
-        accepts_longterm: document.getElementById('subLongterm').checked,
-        has_jobs: document.getElementById('subJobs').checked,
-    };
-    
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
-    errDiv.style.display = 'none';
-    
-    try {
-        const resp = await fetch('/api/submit-ecovillage', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-        const data = await resp.json();
-        
-        if (!resp.ok) {
-            errDiv.textContent = data.error || 'Submission failed';
-            errDiv.style.display = 'block';
-            return;
-        }
-        
-        closeSubmitModal();
-        document.getElementById('submitForm').reset();
-        showToast(data.message || 'Added to the map!', false);
-        
-        // Reload data to include the new org
-        await loadOrganizations();
-        
-    } catch (error) {
-        errDiv.textContent = 'Network error. Please try again.';
-        errDiv.style.display = 'block';
-    } finally {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit';
-    }
+    showToast('This is a read-only static version. To submit new entries, visit the full site at volunteer.templeearth.cc', true);
 }
 
 // ---------------------------------------------------------------------------
@@ -536,104 +486,7 @@ function showToast(msg, isError) {
 }
 
 async function performSemanticSearch() {
-    const queryInput = document.getElementById('semanticQuery');
-    const query = queryInput.value.trim();
-    
-    if (!query) {
-        alert('Please describe what you are looking for.');
-        return;
-    }
-    
-    // Auto-extract location from query text
-    const country = extractLocationFromQuery(query);
-    
-    const btn = document.getElementById('semanticSearchBtn');
-    const toast = document.getElementById('semanticToast');
-    
-    // Clear any previous search results before starting new one
-    searchScores = null;
-    searchResultIds = null;
-    isSearchActive = false;
-
-    // Show loading
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Searching...';
-    btn.disabled = true;
-    toast.style.display = 'none';
-    
-    try {
-        const payload = { query: query, top_k: 200 };
-        if (country) {
-            payload.country = country;
-        }
-        
-        const response = await fetch('/api/semantic-search', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        
-        if (!response.ok) {
-            throw new Error('Search failed: ' + response.status);
-        }
-        
-        const data = await response.json();
-        const results = data.results || [];
-        
-        if (results.length > 0) {
-            isSearchActive = true;
-            
-            // Store search scores and result IDs for filter interaction
-            searchScores = {};
-            searchResultIds = results.map(r => r.id);
-            const total = results.length;
-            results.forEach((r, idx) => {
-                // Use rank-based percentage so it's always meaningful
-                // Cross-encoder logits and bi-encoder scores are on different scales
-                const pct = total > 1 
-                    ? Math.round(5 + 94 * (1 - idx / (total - 1)))
-                    : 99;
-                searchScores[r.id] = {
-                    rank: idx + 1,
-                    score: r.score,
-                    pct: pct,
-                    total: total
-                };
-            });
-            
-            // Show only matching orgs on the map, then re-apply active filters
-            visibleOrganizations = allOrganizations.filter(org => searchResultIds.includes(org.id));
-            filterOrganizations();
-            updateMarkers();
-            
-            // Zoom to show results
-            if (results.length === 1) {
-                map.setView([results[0].latitude, results[0].longitude], 10);
-            } else {
-                const bounds = L.latLngBounds(results.map(r => [r.latitude, r.longitude]));
-                map.fitBounds(bounds, { padding: [50, 50] });
-            }
-            
-            // Brief toast with match count
-            let msg = `Found ${results.length} matching location${results.length !== 1 ? 's' : ''}`;
-            if (country) msg += ` in ${country}`;
-            msg += ` · red=best match → blue`;
-            showToast(msg, false);
-        } else {
-            isSearchActive = false;
-            let msg = 'No matching locations found';
-            if (country) msg += ` in ${country}`;
-            msg += '. Try a different description.';
-            showToast(msg, false);
-        }
-        
-    } catch (error) {
-        console.error('Semantic search error:', error);
-        showToast('Search failed. Please try again.', true);
-    } finally {
-        btn.innerHTML = '<i class="fas fa-search"></i> Find Matching Locations';
-        btn.disabled = false;
-        updateResetButton();
-    }
+    showToast('AI search requires the backend server. Visit volunteer.templeearth.cc for full search.', true);
 }
 
 function clearSemanticSearch() {
