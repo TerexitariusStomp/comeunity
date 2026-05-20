@@ -1,78 +1,96 @@
 /**
  * Client-side semantic search using pre-computed embeddings + WebLLM query embedding.
  *
- * Pre-computed embeddings (Python/sentence-transformers/all-MiniLM-L6-v2):
- *   - embeddings.bin: base64-encoded float32 vectors [count * dim]
- *   - embeddings-meta.json: [{id, lat, lon}, ...]
+ * Pre-computed embeddings (Python/sentence-transformers/all-MiniLM-L6-v2, uint8 quantized):
+ *   - embeddings-index.json: {model, dim, count, num_chunks, range}
+ *   - embeddings-000.json through embeddings-004.json: chunk files with {dim, count, offset, range, data: [{id, lat, lon, e}]}
  *
  * At runtime: WebLLM embeds the user's query, cosine similarity against pre-computed set.
  */
 
-let embeddingIndex = null;
+let embeddingIndex = null; // { embeddings: Float32Array, metadata: [{id, lat, lon}], count, dim, range }
 let webllmEngine = null;
 
 /**
- * Load pre-computed embeddings from binary + metadata files.
- * Returns { embeddings: Float32Array, metadata: Array, count, dim }
+ * Load all embedding chunks and reconstruct the full embedding matrix.
  */
 async function loadEmbeddingIndex() {
-  // Load metadata and binary in parallel
-  const [metaResp, binResp] = await Promise.all([
-    fetch("data/embeddings-meta.json"),
-    fetch("data/embeddings.bin"),
-  ]);
+  // Load index
+  const indexResp = await fetch("data/embeddings-index.json");
+  const index = await indexResp.json();
 
-  const metadata = await metaResp.json();
-  const binText = await binResp.text();
+  const { dim, count, num_chunks, range } = index;
+  const [vecMin, vecMax] = range;
 
-  // Parse binary: first line is header JSON, rest is base64
-  const newlineIdx = binText.indexOf("\n");
-  const header = JSON.parse(binText.slice(0, newlineIdx));
-  const b64 = binText.slice(newlineIdx + 1);
+  console.log(`Loading ${count} embeddings in ${num_chunks} chunks...`);
 
-  // Decode base64 to Uint8Array, then to Float32Array
-  const binaryStr = atob(b64);
-  const bytes = new Uint8Array(binaryStr.length);
-  for (let i = 0; i < binaryStr.length; i++) {
-    bytes[i] = binaryStr.charCodeAt(i);
+  // Load all chunks in parallel
+  const chunkPromises = [];
+  for (let i = 0; i < num_chunks; i++) {
+    const chunkNum = String(i).padStart(3, "0");
+    chunkPromises.push(
+      fetch(`data/embeddings-${chunkNum}.json`).then((r) => r.json())
+    );
   }
-  const embeddings = new Float32Array(bytes.buffer);
+  const chunks = await Promise.all(chunkPromises);
 
-  console.log(
-    `Loaded ${header.count} embeddings (dim=${header.dim}) from ${header.model}`
-  );
+  // Reconstruct full embedding matrix as Float32Array
+  // Dequantize uint8 -> float32 on load
+  const embeddings = new Float32Array(count * dim);
+  const metadata = new Array(count);
 
-  return {
-    embeddings,
-    metadata,
-    count: header.count,
-    dim: header.dim,
-    model: header.model,
-  };
+  for (const chunk of chunks) {
+    const { offset, data } = chunk;
+    for (let i = 0; i < data.length; i++) {
+      const item = data[i];
+      const globalIdx = offset + i;
+
+      // Decode base64 uint8 embedding
+      const b64 = item.e;
+      const binaryStr = atob(b64);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let j = 0; j < binaryStr.length; j++) {
+        bytes[j] = binaryStr.charCodeAt(j);
+      }
+
+      // Dequantize: uint8 [0,255] -> float32 [vecMin, vecMax]
+      const vecOffset = globalIdx * dim;
+      const scale = (vecMax - vecMin) / 255.0;
+      for (let j = 0; j < dim; j++) {
+        embeddings[vecOffset + j] = bytes[j] * scale + vecMin;
+      }
+
+      metadata[globalIdx] = { id: item.id, lat: item.lat, lon: item.lon };
+    }
+  }
+
+  console.log(`Loaded ${count} embeddings (dim=${dim})`);
+
+  return { embeddings, metadata, count, dim };
 }
 
 /**
  * Initialize WebLLM embedding engine for query embedding.
- * Uses snowflake-arctic-embed-m (same model family as pre-computed embeddings).
  */
 async function initWebLLMEngine() {
-  // Dynamic import of WebLLM
-  const webllm = await import(
-    "https://esm.run/@mlc-ai/web-llm@0.2.83"
-  );
-
+  const webllm = await import("https://esm.run/@mlc-ai/web-llm@0.2.83");
   const modelId = "snowflake-arctic-embed-m-q0f32-MLC-b4";
 
   const engine = await webllm.CreateMLCEngine(modelId, {
     initProgressCallback: (report) => {
       const label = document.getElementById("init-label");
-      if (label) label.textContent = report.text;
+      if (label) {
+        label.style.display = "block";
+        label.textContent = report.text;
+      }
       console.log("[WebLLM]", report.text);
     },
     logLevel: "INFO",
   });
 
   console.log("WebLLM embedding engine ready");
+  const label = document.getElementById("init-label");
+  if (label) label.style.display = "none";
   return engine;
 }
 
@@ -80,14 +98,10 @@ async function initWebLLMEngine() {
  * Search: embed query via WebLLM, find top-k cosine similarity matches.
  */
 async function searchEmbeddings(query, topK = 200) {
-  if (!embeddingIndex) {
-    throw new Error("Embedding index not loaded");
-  }
-  if (!webllmEngine) {
-    throw new Error("WebLLM engine not initialized");
-  }
+  if (!embeddingIndex) throw new Error("Embedding index not loaded");
+  if (!webllmEngine) throw new Error("WebLLM engine not initialized");
 
-  // Embed the query
+  // Embed the query using WebLLM
   const queryPrefix = "Represent this sentence for searching relevant passages: ";
   const reply = await webllmEngine.embeddings.create({
     input: [queryPrefix + query],
@@ -102,7 +116,7 @@ async function searchEmbeddings(query, topK = 200) {
   norm = Math.sqrt(norm);
   for (let i = 0; i < rawVec.length; i++) queryVec[i] = rawVec[i] / norm;
 
-  // Compute cosine similarities (pre-computed vectors are already normalized)
+  // Compute cosine similarities
   const { embeddings, metadata, count, dim } = embeddingIndex;
   const scores = new Float32Array(count);
 
