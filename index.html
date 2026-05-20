@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Ecovillage Map — Find Intentional Communities, Eco-Villages & Volunteering</title>
+    <meta name="description" content="Discover 7,000+ ecovillages and intentional communities worldwide. Find places accepting volunteers, visitors, and residents. Permaculture, organic farming, sustainable living.">
+    <meta name="keywords" content="ecovillage map, intentional communities, eco villages, permaculture, sustainable living, volunteer opportunities, community living, organic farming, off-grid, homesteading">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#667eea">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Ecovillage Map">
+    
+    <!-- Canonical -->
+    <link rel="canonical" href="https://volunteer.templeearth.cc/">
+    
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://volunteer.templeearth.cc/">
+    <meta property="og:title" content="Global Ecovillage Map — Find Intentional Communities Worldwide">
+    <meta property="og:description" content="Discover 7,000+ ecovillages and intentional communities. Volunteer, visit, or find your next home. Permaculture, organic farming, sustainable living.">
+    <meta property="og:site_name" content="Global Ecovillage Map">
+    <meta property="og:locale" content="en_US">
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Global Ecovillage Map — Find Intentional Communities">
+    <meta name="twitter:description" content="Discover 7,000+ ecovillages worldwide. Permaculture, volunteering, sustainable living.">
+    
+    <!-- Hreflang -->
+    <link rel="alternate" hreflang="en" href="https://volunteer.templeearth.cc/">
+    <link rel="alternate" hreflang="x-default" href="https://volunteer.templeearth.cc/">
+
+    <!-- Preconnect -->
+    <link rel="preconnect" href="https://unpkg.com">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link rel="preconnect" href="https://volunteer.templeearth.cc">
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+    
+    <!-- JSON-LD Structured Data -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Global Ecovillage Map",
+        "url": "https://volunteer.templeearth.cc/",
+        "description": "Interactive map of 7,000+ ecovillages and intentional communities worldwide. Filter by volunteer opportunities, short/long-term stays, and jobs.",
+        "applicationCategory": "TravelApplication",
+        "operatingSystem": "Web",
+        "browserRequirements": "Requires JavaScript",
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+        }
+    }
+    </script>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div class="map-controls">
+        <div class="control-panel">
+            <div class="panel-header">
+                <h3><i class="fas fa-globe-americas"></i> Ecovillage Map</h3>
+                <button class="toggle-btn" id="filterToggle"><i class="fas fa-filter"></i></button>
+            </div>
+            
+            <div class="panel-content" id="filterPanel">
+                <!-- Feature Filters -->
+                <div class="filter-group">
+                    <label><input type="checkbox" class="feature-checkbox" data-feature="volunteer"> ❤️ Accepts Volunteers</label>
+                    <label><input type="checkbox" class="feature-checkbox" data-feature="shortterm"> 👋 Accepts Short-term Visitors</label>
+                    <label><input type="checkbox" class="feature-checkbox" data-feature="longterm"> 🏠 Accepts Long-term Residents</label>
+                    <label><input type="checkbox" class="feature-checkbox" data-feature="jobs"> 💼 Has Jobs</label>
+                </div>
+                
+                <!-- AI Search -->
+                <div class="filter-group">
+                    <label style="font-weight:600;margin-bottom:8px;display:block;">
+                        <i class="fas fa-robot"></i> AI Search — describe what you want
+                    </label>
+                    <textarea id="semanticQuery" rows="3" placeholder="Describe what you're looking for... e.g., 'I'm a permaculture designer seeking a community that accepts volunteers for 3-6 months, with organic farming and natural building. Or mention a location: permaculture in Brazil, eco village in Europe'." style="width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:4px;font-size:14px;resize:vertical;margin-bottom:8px;"></textarea>
+                    
+                    <button id="semanticSearchBtn" class="btn btn-semantic">
+                        <i class="fas fa-search"></i> Find Matching Locations
+                    </button>
+                    
+                    <!-- Result count toast (shows briefly then auto-hides) -->
+                    <div id="semanticToast" style="display:none;margin-top:8px;padding:6px 10px;border-radius:4px;background:#e8f5e9;color:#2e7d32;font-size:13px;text-align:center;"></div>
+                </div>
+                <div style="margin-top:8px;padding-top:8px;border-top:1px solid #eee;text-align:center;">
+                    <a id="submitLink" href="#" style="font-size:12px;color:#888;text-decoration:none;" title="Add an ecovillage not yet on the map">
+                        <i class="fas fa-plus-circle"></i> Submit an Ecovillage
+                    </a>
+                    &nbsp;&middot;&nbsp;
+                    <a href="/privacy.html" style="font-size:12px;color:#888;text-decoration:none;">
+                        <i class="fas fa-shield-alt"></i> Privacy
+                    </a>
+                    &nbsp;&middot;&nbsp;
+                    <a href="https://github.com/TerexitariusStomp/volunteer-map" target="_blank" style="font-size:14px;color:#888;text-decoration:none;" title="View source on GitHub">
+                        <i class="fab fa-github"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="stats-panel">
+            <div class="stat-item">
+                <span class="stat-label">Total Ecovillages</span>
+                <span class="stat-value" id="totalOrgs">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Showing</span>
+                <span class="stat-value" id="visibleCount">0</span>
+            </div>
+            <button id="resetBtn" class="btn btn-reset" title="Reset to all data" style="display:none;padding:4px 10px;font-size:12px;border:1px solid #ccc;border-radius:4px;background:#f8f9fa;cursor:pointer;white-space:nowrap;">
+                <i class="fas fa-undo"></i> Reset
+            </button>
+        </div>
+    </div>
+    
+    <div id="orgDetailsModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <div class="modal-body"></div>
+        </div>
+    </div>
+    
+    <!-- Submit Ecovillage Modal -->
+    <div id="submitModal" class="modal">
+        <div class="modal-content" style="max-width:500px;">
+            <span class="close-submit close-modal">&times;</span>
+            <h3 style="margin:0 0 16px;"><i class="fas fa-plus-circle"></i> Submit an Ecovillage</h3>
+            <form id="submitForm" style="display:flex;flex-direction:column;gap:10px;">
+                <input type="text" id="subName" placeholder="Community name *" required style="padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
+                <textarea id="subDesc" rows="3" placeholder="Description (min 20 characters) *" required style="padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;resize:vertical;"></textarea>
+                <div style="display:flex;gap:8px;">
+                    <input type="text" id="subCity" placeholder="City" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
+                    <input type="text" id="subCountry" placeholder="Country *" required style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <input type="text" id="subWebsite" placeholder="Website URL" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
+                    <input type="email" id="subEmail" placeholder="Email" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <input type="number" id="subLat" placeholder="Latitude *" step="any" required style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
+                    <input type="number" id="subLng" placeholder="Longitude *" step="any" required style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:13px;">
+                    <label><input type="checkbox" id="subVolunteers"> Accepts Volunteers</label>
+                    <label><input type="checkbox" id="subVisitors"> Accepts Visitors</label>
+                    <label><input type="checkbox" id="subShortterm"> Short-term</label>
+                    <label><input type="checkbox" id="subLongterm"> Long-term</label>
+                    <label><input type="checkbox" id="subJobs"> Has Jobs</label>
+                </div>
+                <div id="submitError" style="color:#c62828;font-size:13px;display:none;"></div>
+                <button type="submit" id="submitBtn" style="padding:10px;background:#007bff;color:white;border:none;border-radius:4px;font-size:15px;cursor:pointer;">
+                    <i class="fas fa-paper-plane"></i> Submit
+                </button>
+            </form>
+        </div>
+    </div>
+    
+    <div id="loadingIndicator" class="loading" style="display: none;">
+        <div class="spinner"></div>
+        <span>Loading ecovillages...</span>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+    <script src="js/app.js?v=24"></script>
+    <!-- Matomo -->
+    <script>
+        var _paq = window._paq = window._paq || [];
+        
+        // Require consent before tracking (GDPR-friendly)
+        _paq.push(['requireConsent']);
+        
+        // Track everything
+        _paq.push(['enableHeartBeatTimer', 15]);          // ping every 15s for accurate time-on-page
+        _paq.push(['enableLinkTracking', true]);           // track all link clicks
+        _paq.push(['setDownloadExtensions', 'pdf|docx?|xlsx?|pptx?|zip|gz|bz2|7z|rar|tar|jpg|png|gif|mp3|mp4|avi|mov|wmv|flv|webm']); // track downloads
+        _paq.push(['trackPageView']);
+        _paq.push(['enableJSErrorTracking']);              // track JS errors
+        _paq.push(['trackPagePerformance']);               // track page load performance (TTFB, DOM, etc.)
+        _paq.push(['trackAllContentImpressions']);         // track content blocks
+        
+        // Privacy: respect Do Not Track
+        _paq.push(['setDoNotTrack', true]);
+        
+        (function() {
+            var u="/analytics/";
+            _paq.push(['setTrackerUrl', u+'matomo.php']);
+            _paq.push(['setSiteId', '1']);
+            var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+            g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+        })();
+        
+        // Track semantic search queries as site searches
+        document.addEventListener('click', function(e) {
+            if (e.target.id === 'semanticSearchBtn') {
+                var query = document.getElementById('semanticQuery')?.value?.trim();
+                if (query && query.length > 2) {
+                    _paq.push(['trackSiteSearch', query, 'semantic', false]);
+                }
+            }
+        });
+        
+        // Track ecovillage submissions as goals
+        document.addEventListener('submit', function(e) {
+            if (e.target.id === 'submitForm') {
+                _paq.push(['trackGoal', 1]);
+            }
+        });
+    </script>
+    <!-- End Matomo Code -->
+    
+    <!-- OpenReplay - Session Recording & Heatmaps (if project key is set) -->
+    <script>
+    (function() {
+        var projectKey = localStorage.getItem('openreplay_project_key');
+        if (projectKey && projectKey.length > 8) {
+            var script = document.createElement('script');
+            script.src = '/replay/openreplay.js';
+            script.async = true;
+            script.onload = function() {
+                if (window.OpenReplay) {
+                    window.OpenReplay.init({
+                        projectKey: projectKey,
+                        ingestPoint: 'https://volunteer.templeearth.cc/replay/ingest'
+                    });
+                }
+            };
+            document.head.appendChild(script);
+        }
+    })();
+    </script>
+    <!-- End OpenReplay -->
+    
+    <!-- Consent banner -->
+    <div id="consentBanner" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#fff;border-top:2px solid #667eea;box-shadow:0 -4px 16px rgba(0,0,0,0.15);padding:16px 20px;font-family:'Segoe UI',sans-serif;">
+        <div style="max-width:900px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:12px;">
+            <div style="flex:1;min-width:200px;font-size:13px;color:#555;line-height:1.4;">
+                <strong style="color:#333;">This site uses analytics cookies</strong><br>
+                We use self-hosted Matomo to understand how the map is used. No data is shared with third parties.
+                <a href="/privacy.html" style="color:#667eea;text-decoration:underline;white-space:nowrap;">Learn more</a>
+            </div>
+            <div style="display:flex;gap:8px;flex-shrink:0;">
+                <button id="consentAccept" style="background:#667eea;color:white;border:none;padding:10px 22px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;min-height:44px;">Accept</button>
+                <button id="consentDecline" style="background:#f0f0f0;color:#555;border:1px solid #ddd;padding:10px 22px;border-radius:6px;cursor:pointer;font-size:14px;min-height:44px;">Decline</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        // Consent banner logic
+        (function() {
+            var CONSENT_COOKIE = 'mtm_consent_removed';
+            var banner = document.getElementById('consentBanner');
+            
+            // Check if user already made a choice
+            function getCookie(name) {
+                var match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+                return match ? match.pop() : null;
+            }
+            
+            // Show banner if no consent decision has been made
+            if (!getCookie('mtm_consent') && !getCookie(CONSENT_COOKIE)) {
+                banner.style.display = 'block';
+            }
+            
+            // Accept
+            document.getElementById('consentAccept').addEventListener('click', function() {
+                _paq.push(['rememberConsentGiven']);
+                // Trigger server-side IP enrichment immediately
+                fetch('/api/enrich-ip', { method: 'POST', keepalive: true }).catch(function(){});
+                banner.style.display = 'none';
+            });
+            
+            // Decline
+            document.getElementById('consentDecline').addEventListener('click', function() {
+                _paq.push(['forgetConsentGiven']);
+                // Set a cookie so the banner doesn't show again
+                var d = new Date();
+                d.setTime(d.getTime() + 30*24*60*60*1000);
+                document.cookie = CONSENT_COOKIE + '=1; expires=' + d.toUTCString() + '; path=/';
+                banner.style.display = 'none';
+            });
+        })();
+    </script>
+    <!-- End consent banner -->
+    
+    <!-- Google Translate - auto-detect browser language -->
+    <div id="translateContainer" style="display:none;"></div>
+    <script>
+        (function() {
+            // Detect browser language
+            var lang = (navigator.language || navigator.userLanguage || 'en').split('-')[0];
+            var supportedLangs = ['en','es','fr','de','pt','it','nl','pl','ru','ja','ko','zh','ar','tr','th','vi','sv','da','fi','nb','cs','ro','hu','el','he','hi','bn','id','ms','tl'];
+            
+            // If not English, show a small translate bar
+            if (lang !== 'en' && supportedLangs.includes(lang)) {
+                var bar = document.createElement('div');
+                bar.id = 'langBar';
+                bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#667eea;color:white;text-align:center;padding:6px 16px;font-size:13px;font-family:sans-serif;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;';
+                bar.innerHTML = '🌐 This page is available in English. ' +
+                    '<a href="https://translate.google.com/translate?hl=' + lang + '&sl=en&tl=' + lang + '&u=' + encodeURIComponent(window.location.href) + '" target="_blank" style="color:#fff;font-weight:600;text-decoration:underline;">Translate to ' + lang.toUpperCase() + '</a>' +
+                    ' <button onclick="this.parentElement.style.display=\'none\'" style="background:none;border:1px solid rgba(255,255,255,0.5);color:white;border-radius:4px;padding:2px 10px;cursor:pointer;font-size:12px;margin-left:4px;">X</button>';
+                document.body.prepend(bar);
+                // Shift the map controls down by the bar height
+                var style = document.createElement('style');
+                style.textContent = 'body { padding-top: 36px; } @media (max-width:768px) { body { padding-top: 36px; } }';
+                document.head.appendChild(style);
+            }
+        })();
+    </script>
+    <!-- End translate -->
+
+<p><a href="/ecovillage-locations/">Volunteer EcoVillage Locations map</a></p>
+</body>
+</html>
