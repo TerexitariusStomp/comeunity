@@ -14,7 +14,7 @@ let transformersWorker = null;
 
 async function getTransformersWorker() {
   if (!transformersWorker) {
-    transformersWorker = new Worker('js/transformers-worker.js', { type: 'module' });
+    transformersWorker = new Worker('js/embedding-worker.js', { type: 'module' });
   }
   return new Promise((resolve, reject) => {
     const onMessage = (e) => {
