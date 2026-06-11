@@ -10,6 +10,44 @@
 
 let embeddingIndex = null; // { embeddings: Float32Array, metadata: [{id, lat, lon}], count, dim, range }
 let webllmEngine = null;
+let transformersWorker = null;
+
+async function getTransformersWorker() {
+  if (!transformersWorker) {
+    transformersWorker = new Worker('js/transformers-worker.js', { type: 'module' });
+  }
+  return new Promise((resolve, reject) => {
+    const onMessage = (e) => {
+      if (e.data.type === 'ready') {
+        transformersWorker.removeEventListener('message', onMessage);
+        resolve(transformersWorker);
+      } else if (e.data.type === 'error') {
+        transformersWorker.removeEventListener('message', onMessage);
+        reject(new Error(e.data.error));
+      }
+    };
+    transformersWorker.addEventListener('message', onMessage);
+    transformersWorker.postMessage({ type: 'init', id: Date.now() });
+  });
+}
+
+async function queryEmbeddingWithWorker(text) {
+  const worker = await getTransformersWorker();
+  return new Promise((resolve, reject) => {
+    const id = Date.now();
+    const onMessage = (e) => {
+      if (e.data.type === 'encoded' && e.data.id === id) {
+        transformersWorker.removeEventListener('message', onMessage);
+        resolve(new Float32Array(e.data.value));
+      } else if (e.data.type === 'error' && e.data.id === id) {
+        transformersWorker.removeEventListener('message', onMessage);
+        reject(new Error(e.data.error));
+      }
+    };
+    transformersWorker.addEventListener('message', onMessage);
+    worker.postMessage({ type: 'encode', id, value: text });
+  });
+}
 
 /**
  * Load all embedding chunks and reconstruct the full embedding matrix.
@@ -93,28 +131,39 @@ async function initWebLLMEngine() {
   if (label) label.style.display = "none";
   return engine;
 }
-
 /**
- * Search: embed query via WebLLM, find top-k cosine similarity matches.
+ * Search: embed query via WebLLM (or transformers.js worker fallback), find top-k cosine similarity matches.
  */
 async function searchEmbeddings(query, topK = 200) {
   if (!embeddingIndex) throw new Error("Embedding index not loaded");
-  if (!webllmEngine) throw new Error("WebLLM engine not initialized");
 
-  // Embed the query using WebLLM
-  const queryPrefix = "Represent this sentence for searching relevant passages: ";
-  const reply = await webllmEngine.embeddings.create({
-    input: [queryPrefix + query],
-    model: "snowflake-arctic-embed-m-q0f32-MLC-b4",
-  });
+  let queryVec;
+  try {
+    if (webllmEngine) {
+      const queryPrefix = "Represent this sentence for searching relevant passages: ";
+      const reply = await webllmEngine.embeddings.create({
+        input: [queryPrefix + query],
+        model: "snowflake-arctic-embed-m-q0f32-MLC-b4",
+      });
 
-  // Normalize query vector
-  const rawVec = reply.data[0].embedding;
-  const queryVec = new Float32Array(rawVec.length);
-  let norm = 0;
-  for (let i = 0; i < rawVec.length; i++) norm += rawVec[i] * rawVec[i];
-  norm = Math.sqrt(norm);
-  for (let i = 0; i < rawVec.length; i++) queryVec[i] = rawVec[i] / norm;
+      const rawVec = reply.data[0].embedding;
+      queryVec = new Float32Array(rawVec.length);
+      let norm = 0;
+      for (let i = 0; i < rawVec.length; i++) norm += rawVec[i] * rawVec[i];
+      norm = Math.sqrt(norm);
+      for (let i = 0; i < rawVec.length; i++) queryVec[i] = rawVec[i] / norm;
+    } else {
+      queryVec = await queryEmbeddingWithWorker(query);
+    }
+  } catch (err) {
+    console.error('[search] Query embedding failed:', err);
+    if (webllmEngine) {
+      webllmEngine = null;
+      queryVec = await queryEmbeddingWithWorker(query);
+    } else {
+      throw err;
+    }
+  }
 
   // Compute cosine similarities
   const { embeddings, metadata, count, dim } = embeddingIndex;
@@ -150,3 +199,7 @@ async function searchEmbeddings(query, topK = 200) {
 
   return results;
 }
+
+window.loadEmbeddingIndex = loadEmbeddingIndex;
+window.initWebLLMEngine = initWebLLMEngine;
+window.searchEmbeddings = searchEmbeddings;

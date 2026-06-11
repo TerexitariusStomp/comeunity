@@ -41,10 +41,13 @@ async function initSearch() {
         embeddingIndex = await loadEmbeddingIndex();
         showToast('AI search ready — loading embedding model...', false);
         webllmEngine = await initWebLLMEngine();
+        if (!webllmEngine) {
+            showToast('WebGPU unavailable — using transformers.js for search', false);
+        }
         showToast('AI search ready! Describe what you\'re looking for.', false);
     } catch (err) {
         console.error('Search init failed:', err);
-        showToast('AI search unavailable (WebGPU may not be supported)', true);
+        showToast('AI search unavailable', true);
     }
 }
 
@@ -510,11 +513,6 @@ async function performSemanticSearch() {
 
     if (!embeddingIndex) {
         showToast('Still loading embeddings, please wait...', true);
-        return;
-    }
-
-    if (!webllmEngine) {
-        showToast('AI model still loading, please wait...', true);
         return;
     }
 
