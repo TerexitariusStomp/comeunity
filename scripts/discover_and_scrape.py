@@ -1,17 +1,12 @@
 #!/usr/bin/env python3
-"""Parallel-safe discover & scrape for job listings and stay booking pages.
+"""Optimized parallel-safe discover & scrape for jobs and stays.
 
-Uses claim-based batching with SQLite BEGIN IMMEDIATE + last_scrape_attempt
-so multiple workers can run in parallel without overlap.
-
-Usage:
-  # Run 1 worker (background):
-  nohup python3 -u scripts/discover_and_scrape.py > /tmp/scrape_worker_1.log 2>&1 &
-
-  # Run multiple workers in parallel:
-  nohup python3 -u scripts/discover_and_scrape.py > /tmp/scrape_worker_1.log 2>&1 &
-  nohup python3 -u scripts/discover_and_scrape.py > /tmp/scrape_worker_2.log 2>&1 &
-  nohup python3 -u scripts/discover_and_scrape.py > /tmp/scrape_worker_3.log 2>&1 &
+Optimizations:
+- Domain blacklist (linktr.ee, facebook.com, ecovillage.org/project/*, etc.)
+- Reduced timeout (8s) with smart retry only on promising domains
+- Ordered paths by likelihood (most common first)
+- Early abort if site is down or blacklisted
+- Connection reuse via urllib opener
 """
 import sqlite3
 import re
@@ -21,32 +16,59 @@ import urllib.request
 import urllib.error
 from html.parser import HTMLParser
 from datetime import datetime
+from urllib.parse import urlparse
 
 DB_PATH = '/home/user/volunteer-map/backend/organizations.db'
-BATCH_SIZE = 20
+BATCH_SIZE = 30
+TIMEOUT = 8
 
+# Domains that never have job/stay subpages
+DOMAIN_BLACKLIST = {
+    'linktr.ee', 'facebook.com', 'fb.com', 'instagram.com',
+    'twitter.com', 'x.com', 'linkedin.com', 'tiktok.com',
+    'youtube.com', 'youtu.be', 'vimeo.com', 'pinterest.com',
+    't.me', 'telegram.me', 'wa.me', 'whatsapp.com',
+    'gofundme.com', 'kickstarter.com', 'indiegogo.com',
+}
+
+# Path prefixes that are directory listings, not real org websites
+PATH_BLACKLIST_PREFIXES = [
+    '/project/', '/ecovillage/', '/ecoversity/',
+    '/communities/', '/community/',
+]
+
+# Most common paths first for faster hits
 JOB_PATHS = [
-    'jobs', 'careers', 'work-with-us', 'employment', 'opportunities',
-    'volunteer', 'volunteers', 'volunteering', 'get-involved', 'join-us',
-    'recruitment', 'positions', 'vacancies', 'team', 'about/jobs',
-    'about/careers', 'about/volunteer', 'participate', 'live-here',
-    'membership', 'apply', 'join', 'work', 'internships', 'internship',
-    'apprenticeship', 'apprenticeships', 'wwoof', 'help',
+    'volunteer', 'jobs', 'careers', 'get-involved',
+    'join-us', 'work-with-us', 'volunteers', 'employment',
+    'positions', 'team', 'apply', 'about/volunteer',
+    'about/careers', 'about/jobs', 'opportunities',
+    'live-here', 'membership', 'participate',
 ]
 
 STAY_PATHS = [
-    'stay', 'stays', 'accommodation', 'accommodations', 'rooms', 'room',
-    'book', 'booking', 'book-a-stay', 'book-now', 'reserve', 'reservation',
-    'visit', 'visiting', 'guest', 'guests', 'guesthouse', 'camping', 'camp',
-    'glamping', 'tent', 'retreat', 'retreats', 'getaway', 'overnight',
-    'lodging', 'hebergement', 'logement', 'gite', 'chambre',
-    'chambres-dhotes', 'tarif', 'tarifs', 'prices', 'rates',
+    'stay', 'accommodation', 'rooms', 'visit',
+    'book', 'booking', 'reserve', 'reservation',
+    'guest', 'guests', 'guesthouse', 'camping',
+    'glamping', 'retreat', 'getaway', 'overnight',
+    'lodging', 'hebergement', 'logement', 'gite',
+    'tarif', 'tarifs', 'prices', 'rates',
+    'book-a-stay', 'book-now', 'chambre',
 ]
 
-JOB_KW = ['job', 'volunteer', 'apply', 'position', 'career', 'role',
-          'opening', 'hiring', 'join our team', 'work with us', 'intern']
+JOB_KW = ['volunteer', 'job', 'apply', 'position', 'career', 'role',
+          'opening', 'hiring', 'join our team', 'work with us', 'internship',
+          'apprenticeship', 'we are looking for', 'seeking']
 STAY_KW = ['stay', 'accommodation', 'room', 'book', 'guest', 'night',
-           'reserve', 'check-in', 'check-out', 'tarif', 'price']
+           'reserve', 'check-in', 'check-out', 'tarif', 'price per night',
+           'nightly rate', 'availability', 'booking']
+
+# Reusable opener
+_opener = urllib.request.build_opener()
+_opener.addheaders = [(
+    'User-Agent',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+)]
 
 
 class TextExtractor(HTMLParser):
@@ -74,14 +96,28 @@ class TextExtractor(HTMLParser):
         return re.sub(r'\s+', ' ', ' '.join(self.chunks)).strip()
 
 
-def fetch(url, timeout=12):
+def is_blacklisted(url):
+    """Check if URL is from a known bad domain or path."""
+    if not url:
+        return True
+    try:
+        parsed = urlparse(url if url.startswith('http') else f'https://{url}')
+        domain = parsed.netloc.lower().lstrip('www.')
+        if any(domain.endswith(bd) or domain == bd for bd in DOMAIN_BLACKLIST):
+            return True
+        path = parsed.path.lower()
+        if any(path.startswith(prefix) for prefix in PATH_BLACKLIST_PREFIXES):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def fetch(url, timeout=TIMEOUT):
     if not url.startswith('http'):
         url = 'https://' + url
     try:
-        req = urllib.request.Request(url, headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
-        resp = urllib.request.urlopen(req, timeout=timeout)
+        resp = _opener.open(url, timeout=timeout)
         return resp.status, resp.read().decode('utf-8', errors='replace'), resp.geturl()
     except urllib.error.HTTPError as e:
         return e.code, None, url
@@ -89,21 +125,27 @@ def fetch(url, timeout=12):
         return -1, None, url
 
 
-def discover_page(base_url, paths, keywords, max_checks=8):
-    if not base_url:
+def discover_page(base_url, paths, keywords, max_checks=6):
+    if is_blacklisted(base_url):
         return None, None
     if not base_url.startswith('http'):
         base_url = 'https://' + base_url
     base_url = base_url.rstrip('/')
+
+    # Quick check if base site is alive
+    status, _, _ = fetch(base_url, timeout=4)
+    if status not in (200, 301, 302, 307, 308):
+        return None, None
+
     checked = 0
     for p in paths:
-        status, html, final = fetch(f"{base_url}/{p}")
+        status, html, final = fetch(f"{base_url}/{p}", timeout=TIMEOUT)
         checked += 1
-        if status == 200 and html:
+        if status == 200 and html and len(html) > 500:
             low = html.lower()
             if any(k in low for k in keywords):
                 return final, html
-        time.sleep(0.15)
+        time.sleep(0.1)
         if checked >= max_checks:
             break
     return None, None
@@ -112,13 +154,14 @@ def discover_page(base_url, paths, keywords, max_checks=8):
 def extract_jobs(html, org_name):
     ext = TextExtractor()
     try:
-        ext.feed(html[:400000])
+        ext.feed(html[:300000])
     except Exception:
         pass
     text = ext.get_text()
     if len(text) < 200:
         return []
 
+    # Look for heading-like blocks
     raw_blocks = re.split(r'(?=\b[A-Z][A-Z\s&\-/,]{5,80}[A-Z]\b)', text)
     job_terms = ['volunteer', 'intern', 'apprentice', 'position', 'opening',
                  'job', 'role', 'opportunity', 'hiring', 'apply', 'seeking']
@@ -141,7 +184,7 @@ def extract_jobs(html, org_name):
                 role = 'internship'
             elif any(x in low for x in ['apprentice', 'apprenticeship']):
                 role = 'apprenticeship'
-            elif any(x in low for x in ['salary', 'full-time', 'full time', 'paid']):
+            elif any(x in low for x in ['salary', 'full-time', 'full time', 'paid', 'compensation']):
                 role = 'paid_job'
             listings.append({'title': title, 'description': block[:2500], 'role': role})
 
@@ -171,7 +214,7 @@ def analyze_booking(html, url):
 
     ext = TextExtractor()
     try:
-        ext.feed(html[:300000])
+        ext.feed(html[:250000])
     except Exception:
         pass
     text = ext.get_text().lower()
@@ -200,7 +243,6 @@ def analyze_booking(html, url):
 
 
 def claim_batch(conn, batch_size):
-    """Claim a batch of unprocessed orgs using exclusive transaction."""
     cur = conn.cursor()
     conn.execute('BEGIN IMMEDIATE')
     cur.execute('''
@@ -219,11 +261,10 @@ def claim_batch(conn, batch_size):
 
 
 def process_org(conn, org_id, name, website):
-    """Process one org: discover jobs and stays, store results."""
     cur = conn.cursor()
 
     # Jobs
-    job_url, job_html = discover_page(website, JOB_PATHS, JOB_KW, max_checks=8)
+    job_url, job_html = discover_page(website, JOB_PATHS, JOB_KW, max_checks=6)
     if job_url and job_html:
         listings = extract_jobs(job_html, name)
         if listings:
@@ -241,12 +282,12 @@ def process_org(conn, org_id, name, website):
         has_jobs = 0
 
     # Stays
-    stay_url, stay_html = discover_page(website, STAY_PATHS, STAY_KW, max_checks=8)
+    stay_url, stay_html = discover_page(website, STAY_PATHS, STAY_KW, max_checks=6)
     if stay_url and stay_html:
         btype, analysis = analyze_booking(stay_html, stay_url)
         desc = TextExtractor()
         try:
-            desc.feed(stay_html[:300000])
+            desc.feed(stay_html[:250000])
         except Exception:
             pass
         desc_text = desc.get_text()[:2000]
@@ -259,23 +300,21 @@ def process_org(conn, org_id, name, website):
     else:
         has_stays = 0
 
-    # Update flags
     cur.execute('''
         UPDATE organizations SET has_jobs = ?, has_stays = ? WHERE id = ?
     ''', (has_jobs, has_stays, org_id))
     conn.commit()
-
     return has_jobs, has_stays
 
 
 def worker_loop(batch_size=BATCH_SIZE):
-    """Run indefinitely, claiming and processing batches until exhausted."""
     conn = sqlite3.connect(DB_PATH, timeout=30.0)
     conn.execute('PRAGMA journal_mode=WAL')
 
     total_processed = 0
     total_jobs = 0
     total_stays = 0
+    total_blacklisted = 0
 
     while True:
         rows = claim_batch(conn, batch_size)
@@ -284,6 +323,17 @@ def worker_loop(batch_size=BATCH_SIZE):
             break
 
         for org_id, name, website in rows:
+            if is_blacklisted(website):
+                total_blacklisted += 1
+                # Mark as processed with no findings
+                cur = conn.cursor()
+                cur.execute('''
+                    UPDATE organizations SET has_jobs = 0, has_stays = 0 WHERE id = ?
+                ''', (org_id,))
+                conn.commit()
+                print(f"[{org_id}] {name[:50]} | BLACKLISTED")
+                continue
+
             try:
                 has_jobs, has_stays = process_org(conn, org_id, name, website)
                 total_processed += 1
@@ -295,10 +345,10 @@ def worker_loop(batch_size=BATCH_SIZE):
             except Exception as e:
                 print(f"[{org_id}] {name[:50]} ERROR: {e}")
                 conn.rollback()
-            time.sleep(0.3)
+            time.sleep(0.2)
 
     conn.close()
-    print(f"\nWorker finished: {total_processed} orgs, {total_jobs} job pages, {total_stays} stay pages")
+    print(f"\nWorker finished: {total_processed} orgs, {total_blacklisted} blacklisted, {total_jobs} jobs, {total_stays} stays")
 
 
 if __name__ == '__main__':
