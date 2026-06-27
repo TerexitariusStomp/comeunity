@@ -1,14 +1,14 @@
 // Global variables
 let map;
 let allOrganizations = [];
+window.allOrganizations = allOrganizations;
 let visibleOrganizations = [];
 let markers = [];
 let currentLocation = null;
 let filters = {
-    volunteer: false,
-    shortterm: false,
-    longterm: false,
-    jobs: false
+    jobs: false,
+    stays: false,
+    events: false
 };
 let toggleBtn, filterPanel, mapControls; // for responsive drawer
 
@@ -36,27 +36,102 @@ document.addEventListener('DOMContentLoaded', function() {
     initSearch();
 });
 
+function setAIStatus(text, state) {
+    const status = document.getElementById('aiStatus');
+    const icon = document.getElementById('aiStatusIcon');
+    const statusText = document.getElementById('aiStatusText');
+    const bar = document.getElementById('aiProgressBar');
+    if (!status) return;
+    status.style.display = 'block';
+    statusText.textContent = text;
+    if (state === 'loading') {
+        status.style.background = '#e3f2fd';
+        status.style.color = '#1565c0';
+        icon.className = 'fas fa-circle-notch fa-spin';
+        icon.style.marginRight = '6px';
+        bar.style.display = 'block';
+    } else if (state === 'ready') {
+        status.style.background = '#e8f5e9';
+        status.style.color = '#2e7d32';
+        icon.className = 'fas fa-check-circle';
+        icon.style.marginRight = '6px';
+        bar.style.display = 'none';
+    } else if (state === 'error') {
+        status.style.background = '#ffebee';
+        status.style.color = '#c62828';
+        icon.className = 'fas fa-exclamation-circle';
+        icon.style.marginRight = '6px';
+        bar.style.display = 'none';
+    } else if (state === 'searching') {
+        status.style.background = '#fff3e0';
+        status.style.color = '#e65100';
+        icon.className = 'fas fa-circle-notch fa-spin';
+        icon.style.marginRight = '6px';
+        bar.style.display = 'none';
+    }
+}
+
+function setAIProgress(pct) {
+    const fill = document.getElementById('aiProgressFill');
+    if (fill) fill.style.width = pct + '%';
+}
+
 async function initSearch() {
     try {
-        embeddingIndex = await loadEmbeddingIndex();
-        showToast('AI search ready — loading embedding model...', false);
-        webllmEngine = await initWebLLMEngine();
-        if (!webllmEngine) {
-            showToast('WebGPU unavailable — using transformers.js for search', false);
+        setAIStatus('Loading embeddings...', 'loading');
+        setAIProgress(10);
+        await loadEmbeddingIndex();
+        setAIProgress(30);
+
+        // Try WebLLM first (fast, needs WebGPU)
+        let hasWebGPU = false;
+        try {
+            if (navigator.gpu) {
+                setAIStatus('Loading WebGPU AI model...', 'loading');
+                const engine = await initWebLLMEngine();
+                window.setWebllmEngine(engine);
+                hasWebGPU = !!engine;
+            }
+        } catch (mlErr) {
+            console.error('WebLLM init failed:', mlErr);
         }
-        showToast('AI search ready! Describe what you\'re looking for.', false);
+
+        if (!hasWebGPU) {
+            // Load Transformers.js model (WASM, works without WebGPU)
+            setAIStatus('Downloading AI model (~23MB, cached after first load)...', 'loading');
+            window.setInitProgressCb((data) => {
+                if (data.status === 'progress') {
+                    const pct = Math.round((data.progress || 0));
+                    setAIProgress(30 + Math.round(pct * 0.6));
+                    setAIStatus(`Downloading AI model: ${pct}%`, 'loading');
+                } else if (data.status === 'ready') {
+                    setAIProgress(90);
+                    setAIStatus('AI model loaded, preparing search...', 'loading');
+                }
+            });
+            await initTransformers();
+        }
+
+        setAIProgress(100);
+        setAIStatus(hasWebGPU ? 'AI search ready (WebGPU)!' : 'AI search ready!', 'ready');
+        setTimeout(() => {
+            const status = document.getElementById('aiStatus');
+            if (status) status.style.display = 'none';
+        }, 4000);
     } catch (err) {
         console.error('Search init failed:', err);
-        showToast('AI search unavailable', true);
+        setAIStatus('AI search unavailable — check console for details', 'error');
     }
 }
 
 function initMap() {
     map = L.map('map', {
-        zoomControl: true,
+        zoomControl: false,
         attributionControl: true,
         preferCanvas: true
     }).setView([20, 0], 2);
+
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
@@ -241,9 +316,19 @@ function extractLocationFromQuery(query) {
 async function loadOrganizations() {
     showLoading(true);
     try {
-        const response = await fetch('data/organizations.geojson');
+        let response;
+        try {
+            response = await fetch('/api/organizations/geojson/');
+        } catch (e) {
+            console.warn('[load] API fetch failed, falling back to static file:', e);
+            response = await fetch('data/organizations.geojson');
+        }
         if (!response.ok) {
-            throw new Error('HTTP error! status: ' + response.status);
+            console.warn('[load] API returned ' + response.status + ', falling back to static file');
+            response = await fetch('data/organizations.geojson');
+            if (!response.ok) {
+                throw new Error('HTTP error! status: ' + response.status);
+            }
         }
         const data = await response.json();
         allOrganizations = data.features.map(feature => {
@@ -261,9 +346,12 @@ async function loadOrganizations() {
                 accepts_visitors: props.acceptsVisitors,
                 accepts_shortterm: props.acceptsShortterm,
                 accepts_longterm: props.acceptsLongterm,
-                has_jobs: props.hasJobs
+                has_jobs: props.hasJobs,
+                has_stays: props.hasStays,
+                has_events: props.hasEvents
             };
         });
+        window.allOrganizations = allOrganizations;
 
         visibleOrganizations = allOrganizations.slice();
         createMarkers(allOrganizations);
@@ -286,6 +374,12 @@ function buildPopupHtml(org) {
             <span style="display:inline-block;background:${scoreToColor(scoreInfo.score, 1, scoreInfo.rank, scoreInfo.total)};color:white;padding:1px 8px;border-radius:10px;font-weight:600;">#${scoreInfo.rank} · ${scoreInfo.pct}% match</span>
         </div>`;
     }
+    // Job/stay indicators
+    let listingBadges = '';
+    if (org.has_jobs) listingBadges += '<span style="display:inline-block;background:#dc3545;color:white;padding:1px 6px;border-radius:3px;margin:2px 2px 2px 0;font-size:11px;">💼 Jobs</span> ';
+    if (org.has_stays) listingBadges += '<span style="display:inline-block;background:#17a2b8;color:white;padding:1px 6px;border-radius:3px;margin:2px 2px 2px 0;font-size:11px;">🏠 Stays</span> ';
+    if (listingBadges) listingBadges = '<div style="margin:4px 0;">' + listingBadges + '</div>';
+
     // Data source label
     const sourceLabel = getSourceLabel(org.source);
     const sourceHtml = sourceLabel
@@ -294,6 +388,7 @@ function buildPopupHtml(org) {
     return '<div class="org-popup">' +
         scoreBadge +
         body +
+        listingBadges +
         sourceHtml +
         '<br><div class="org-actions"><button class="btn view-details-btn" data-org-id="' + org.id + '">View Details</button></div>' +
         '</div>';
@@ -363,15 +458,14 @@ function filterOrganizations() {
         ? allOrganizations.filter(org => searchResultIds.includes(org.id))
         : allOrganizations.slice();
 
-    if (!filters.volunteer && !filters.shortterm && !filters.longterm && !filters.jobs) {
+    if (!filters.jobs && !filters.stays && !filters.events) {
         visibleOrganizations = base;
         return;
     }
     visibleOrganizations = base.filter(org => {
-        if (filters.volunteer && !org.accepts_volunteers) return false;
-        if (filters.shortterm && !org.accepts_shortterm) return false;
-        if (filters.longterm && !org.accepts_longterm) return false;
         if (filters.jobs && !org.has_jobs) return false;
+        if (filters.stays && !org.has_stays) return false;
+        if (filters.events && !org.has_events) return false;
         return true;
     });
 }
@@ -411,7 +505,7 @@ function updateMarkers() {
     updateStatistics();
 }
 
-function showOrganizationDetails(orgId) {
+async function showOrganizationDetails(orgId) {
     const org = allOrganizations.find(o => o.id === orgId);
     if (!org) return;
     
@@ -438,7 +532,6 @@ function showOrganizationDetails(orgId) {
         linksHtml += '<span><i class="fas fa-phone"></i> ' + escapeHtml(org.phone) + '</span>';
     }
     
-    // Data source
     const sourceLabel = getSourceLabel(org.source);
     const sourceSection = sourceLabel
         ? '<div class="org-section"><h4><i class="fas fa-database"></i> Data Source</h4><div style="font-size:13px;color:#666;">' + sourceLabel + '</div></div>'
@@ -451,10 +544,60 @@ function showOrganizationDetails(orgId) {
         descHtml +
         '<div class="org-section"><h4><i class="fas fa-map-marked-alt"></i> Location</h4><p>Lat: ' + org.latitude.toFixed(4) + ', Lon: ' + org.longitude.toFixed(4) + '</p></div>' +
         (linksHtml ? '<div class="org-section"><h4><i class="fas fa-link"></i> Links</h4><div>' + linksHtml + '</div></div>' : '') +
+        '<div id="jobsSection"></div>' +
+        '<div id="staysSection"></div>' +
         sourceSection +
         '</div>';
     
     document.getElementById('orgDetailsModal').classList.add('active');
+    
+    // Fetch jobs and stays in parallel
+    var jobsPromise = fetch('/api/organizations/' + orgId + '/jobs').then(function(r) { return r.json(); }).catch(function() { return []; });
+    var staysPromise = fetch('/api/organizations/' + orgId + '/stays').then(function(r) { return r.json(); }).catch(function() { return []; });
+    
+    var results = await Promise.all([jobsPromise, staysPromise]);
+    var jobs = results[0];
+    var stays = results[1];
+    
+    // Render jobs
+    var jobsEl = document.getElementById('jobsSection');
+    if (jobs && jobs.length > 0) {
+        var roleLabels = { 'volunteer': 'Volunteer', 'paid_job': 'Paid Position', 'internship': 'Internship', 'apprenticeship': 'Apprenticeship', 'volunteer/work': 'Volunteer / Work' };
+        var jh = '<div class="org-section"><h4><i class="fas fa-briefcase"></i> Job Opportunities (' + jobs.length + ')</h4>';
+        jobs.forEach(function(job) {
+            var roleLabel = roleLabels[job.role] || job.role || 'Position';
+            var title = escapeHtml(job.title || 'Untitled');
+            var jd = job.description ? '<div style="font-size:13px;color:#555;margin:4px 0;line-height:1.4;">' + escapeHtml(job.description.substring(0, 200)) + (job.description.length > 200 ? '...' : '') + '</div>' : '';
+            var cm = job.commitment ? '<span style="font-size:11px;color:#888;margin-right:8px;"><i class="fas fa-clock"></i> ' + escapeHtml(job.commitment) + '</span>' : '';
+            var al = job.source_url ? '<a href="' + escapeHtml(job.source_url) + '" target="_blank" style="font-size:12px;color:#dc3545;text-decoration:none;">Apply &rarr;</a>' : '';
+            jh += '<div style="border:1px solid #eee;border-radius:6px;padding:10px;margin:6px 0;">' +
+                '<div style="font-weight:600;font-size:14px;">' + title + '</div>' +
+                '<div style="font-size:11px;color:#888;margin:2px 0;">' + escapeHtml(roleLabel) + '</div>' +
+                jd + '<div style="margin-top:4px;">' + cm + al + '</div></div>';
+        });
+        jh += '</div>';
+        jobsEl.innerHTML = jh;
+    }
+    
+    // Render stays
+    var staysEl = document.getElementById('staysSection');
+    if (stays && stays.length > 0) {
+        var bookingLabels = { 'external_widget': 'External Booking', 'calendar_tool': 'Calendar Tool', 'email_phone': 'Email / Phone', 'direct_form': 'Direct Form', 'unknown': 'Contact Directly' };
+        var sh = '<div class="org-section"><h4><i class="fas fa-home"></i> Stays Available (' + stays.length + ')</h4>';
+        stays.forEach(function(stay) {
+            var title = escapeHtml(stay.title || 'Stay');
+            var sd = stay.description ? '<div style="font-size:13px;color:#555;margin:4px 0;line-height:1.4;">' + escapeHtml(stay.description.substring(0, 200)) + (stay.description.length > 200 ? '...' : '') + '</div>' : '';
+            var pr = stay.price_info ? '<span style="font-size:11px;color:#888;margin-right:8px;"><i class="fas fa-tag"></i> ' + escapeHtml(stay.price_info) + '</span>' : '';
+            var bl = bookingLabels[stay.booking_type] || 'Contact Directly';
+            var bk = stay.booking_url ? '<a href="' + escapeHtml(stay.booking_url) + '" target="_blank" style="font-size:12px;color:#17a2b8;text-decoration:none;">Book &rarr;</a>' : '';
+            sh += '<div style="border:1px solid #eee;border-radius:6px;padding:10px;margin:6px 0;">' +
+                '<div style="font-weight:600;font-size:14px;">' + title + '</div>' +
+                '<div style="font-size:11px;color:#888;margin:2px 0;">' + escapeHtml(bl) + '</div>' +
+                sd + '<div style="margin-top:4px;">' + pr + bk + '</div></div>';
+        });
+        sh += '</div>';
+        staysEl.innerHTML = sh;
+    }
 }
 
 function updateStatistics() {
@@ -477,7 +620,66 @@ function closeSubmitModal() {
 
 async function handleSubmit(e) {
     e.preventDefault();
-    showToast('This is a read-only static version. To submit new entries, visit the full site at volunteer.templeearth.cc', true);
+    const errDiv = document.getElementById('submitError');
+    const successDiv = document.getElementById('submitSuccess');
+    const btn = document.getElementById('submitBtn');
+    errDiv.style.display = 'none';
+    successDiv.style.display = 'none';
+
+    const data = {
+        name: document.getElementById('subName').value.trim(),
+        description: document.getElementById('subDesc').value.trim(),
+        organization_type: document.getElementById('subType').value.trim() || null,
+        website: document.getElementById('subWebsite').value.trim() || null,
+        email: document.getElementById('subEmail').value.trim() || null,
+        phone: document.getElementById('subPhone').value.trim() || null,
+        address: document.getElementById('subAddress').value.trim() || null,
+        city: document.getElementById('subCity').value.trim() || null,
+        region: document.getElementById('subRegion').value.trim() || null,
+        country: document.getElementById('subCountry').value.trim(),
+        postal_code: document.getElementById('subPostal').value.trim() || null,
+        latitude: parseFloat(document.getElementById('subLat').value),
+        longitude: parseFloat(document.getElementById('subLng').value),
+        accepts_volunteers: document.getElementById('subVolunteers').checked,
+        accepts_visitors: document.getElementById('subVisitors').checked,
+        accepts_shortterm: document.getElementById('subShortterm').checked,
+        accepts_longterm: document.getElementById('subLongterm').checked,
+        has_stays: document.getElementById('subShortterm').checked || document.getElementById('subLongterm').checked,
+        has_jobs: document.getElementById('subJobs').checked,
+        has_events: document.getElementById('subEvents').checked,
+    };
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+
+    try {
+        const resp = await fetch('/api/submit-ecovillage/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+        const result = await resp.json();
+
+        if (resp.ok && result.success) {
+            successDiv.textContent = result.message;
+            successDiv.style.display = 'block';
+            document.getElementById('submitForm').reset();
+            // Reload the map data after a short delay so the new org appears
+            setTimeout(() => {
+                loadOrganizations();
+            }, 1500);
+        } else {
+            const detail = result.detail || result.message || 'Submission failed';
+            errDiv.textContent = detail;
+            errDiv.style.display = 'block';
+        }
+    } catch (err) {
+        errDiv.textContent = 'Network error: ' + err.message;
+        errDiv.style.display = 'block';
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit for Review';
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -511,8 +713,8 @@ async function performSemanticSearch() {
         return;
     }
 
-    if (!embeddingIndex) {
-        showToast('Still loading embeddings, please wait...', true);
+    if (!window.getEmbeddingIndex()) {
+        setAIStatus('Still loading AI model, please wait...', 'loading');
         return;
     }
 
@@ -528,6 +730,7 @@ async function performSemanticSearch() {
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Searching...';
     btn.disabled = true;
     toast.style.display = 'none';
+    setAIStatus('Embedding your query with AI model...', 'searching');
 
     try {
         const results = await searchEmbeddings(query, 200);
@@ -565,17 +768,24 @@ async function performSemanticSearch() {
             if (country) msg += ` in ${country}`;
             msg += ' · red=best match → blue';
             showToast(msg, false);
+            setAIStatus(`Found ${results.length} matches — see map`, 'ready');
+            setTimeout(() => {
+                const s = document.getElementById('aiStatus');
+                if (s) s.style.display = 'none';
+            }, 5000);
         } else {
             isSearchActive = false;
             let msg = 'No matching locations found';
             if (country) msg += ` in ${country}`;
             msg += '. Try a different description.';
             showToast(msg, false);
+            setAIStatus('No matches found — try different keywords', 'error');
         }
 
     } catch (error) {
         console.error('Semantic search error:', error);
         showToast('Search failed. Please try again.', true);
+        setAIStatus('Search failed — ' + (error.message || 'unknown error'), 'error');
     } finally {
         btn.innerHTML = '<i class="fas fa-search"></i> Find Matching Locations';
         btn.disabled = false;

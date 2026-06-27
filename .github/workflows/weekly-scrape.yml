@@ -1,0 +1,114 @@
+name: Weekly Ecovillage Scrape
+
+on:
+  schedule:
+    # Run every Sunday at 06:00 UTC
+    - cron: '0 6 * * 0'
+  workflow_dispatch:
+    inputs:
+      scrapers:
+        description: 'Which scrapers to run (comma-separated, or "all")'
+        required: false
+        default: 'event_details'
+        type: string
+
+jobs:
+  scrape-and-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          # Allow the workflow to commit changes back
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4 lxml
+          # Add any other scraper dependencies here (e.g. playwright, selenium, openai, etc.)
+
+      # -----------------------------------------------------------------------
+      # Uncomment or edit the scrapers you want to run each week.
+      # Each scraper should update backend/organizations.db in place.
+      # -----------------------------------------------------------------------
+
+      # - name: Scrape event details
+      #   run: python scripts/scrape_event_details.py
+      #   working-directory: /home/user/volunteer-map
+
+      # - name: Rescrape job / stay details
+      #   run: python scripts/rescrape_details.py both 2
+      #   working-directory: /home/user/volunteer-map
+
+      # - name: Discover new ecovillages from directories
+      #   run: python scripts/scrape_directories.py
+      #   working-directory: /home/user/volunteer-map
+
+      # - name: Update websites / enrich descriptions
+      #   run: python scripts/update_websites.py
+      #   working-directory: /home/user/volunteer-map
+
+      # Example default: just run event details scraper if no manual input is given
+      - name: Run event details scraper
+        run: python scripts/scrape_event_details.py
+        working-directory: ${{ github.workspace }}
+
+      - name: Export SQLite data to D1 SQL files
+        run: python export-to-d1.py
+        working-directory: ${{ github.workspace }}
+
+      - name: Install Wrangler
+        run: npm install -g wrangler
+
+      - name: Import organizations into D1
+        run: npx wrangler d1 execute volunteer-map-db --remote --file=d1-organizations.sql
+        working-directory: ${{ github.workspace }}
+        env:
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+
+      - name: Import volunteer opportunities into D1
+        run: npx wrangler d1 execute volunteer-map-db --remote --file=d1-volunteer_opportunities.sql
+        working-directory: ${{ github.workspace }}
+        env:
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+
+      - name: Import stays into D1
+        run: npx wrangler d1 execute volunteer-map-db --remote --file=d1-stays.sql
+        working-directory: ${{ github.workspace }}
+        env:
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+
+      - name: Import events into D1
+        run: npx wrangler d1 execute volunteer-map-db --remote --file=d1-events.sql
+        working-directory: ${{ github.workspace }}
+        env:
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+
+      - name: Commit updated SQLite database back to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add backend/organizations.db
+          git diff --cached --quiet || git commit -m "chore: weekly scrape update [$(date -u +%Y-%m-%d)]"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Summary
+        run: |
+          echo "Scrape and sync completed."
+          echo "D1 database: volunteer-map-db"
+          echo "Live site: https://volunteer.templeearth.cc"

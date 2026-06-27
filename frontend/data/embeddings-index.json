@@ -1,1 +1,1 @@
-{"model": "all-MiniLM-L6-v2", "dim": 384, "count": 14803, "num_chunks": 5, "range": [-0.2664947807788849, 0.27122119069099426]}
+{"model": "all-MiniLM-L6-v2", "dim": 384, "count": 1113, "num_chunks": 1, "range": [-0.2509491443634033, 0.23738062381744385]}

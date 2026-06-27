@@ -1,12 +1,7 @@
 #!/usr/bin/env python3
 """Optimized parallel-safe discover & scrape for jobs and stays.
 
-Optimizations:
-- Domain blacklist (linktr.ee, facebook.com, ecovillage.org/project/*, etc.)
-- Reduced timeout (8s) with smart retry only on promising domains
-- Ordered paths by likelihood (most common first)
-- Early abort if site is down or blacklisted
-- Connection reuse via urllib opener
+Uses claim-based batching with being_processed_since to prevent orphaning.
 """
 import sqlite3
 import re
@@ -16,13 +11,11 @@ import urllib.request
 import urllib.error
 from html.parser import HTMLParser
 from datetime import datetime
-from urllib.parse import urlparse
 
 DB_PATH = '/home/user/volunteer-map/backend/organizations.db'
 BATCH_SIZE = 30
 TIMEOUT = 8
 
-# Domains that never have job/stay subpages
 DOMAIN_BLACKLIST = {
     'linktr.ee', 'facebook.com', 'fb.com', 'instagram.com',
     'twitter.com', 'x.com', 'linkedin.com', 'tiktok.com',
@@ -31,13 +24,11 @@ DOMAIN_BLACKLIST = {
     'gofundme.com', 'kickstarter.com', 'indiegogo.com',
 }
 
-# Path prefixes that are directory listings, not real org websites
 PATH_BLACKLIST_PREFIXES = [
     '/project/', '/ecovillage/', '/ecoversity/',
     '/communities/', '/community/',
 ]
 
-# Most common paths first for faster hits
 JOB_PATHS = [
     'volunteer', 'jobs', 'careers', 'get-involved',
     'join-us', 'work-with-us', 'volunteers', 'employment',
@@ -63,7 +54,6 @@ STAY_KW = ['stay', 'accommodation', 'room', 'book', 'guest', 'night',
            'reserve', 'check-in', 'check-out', 'tarif', 'price per night',
            'nightly rate', 'availability', 'booking']
 
-# Reusable opener
 _opener = urllib.request.build_opener()
 _opener.addheaders = [(
     'User-Agent',
@@ -97,10 +87,10 @@ class TextExtractor(HTMLParser):
 
 
 def is_blacklisted(url):
-    """Check if URL is from a known bad domain or path."""
     if not url:
         return True
     try:
+        from urllib.parse import urlparse
         parsed = urlparse(url if url.startswith('http') else f'https://{url}')
         domain = parsed.netloc.lower().lstrip('www.')
         if any(domain.endswith(bd) or domain == bd for bd in DOMAIN_BLACKLIST):
@@ -131,12 +121,9 @@ def discover_page(base_url, paths, keywords, max_checks=6):
     if not base_url.startswith('http'):
         base_url = 'https://' + base_url
     base_url = base_url.rstrip('/')
-
-    # Quick check if base site is alive
     status, _, _ = fetch(base_url, timeout=4)
     if status not in (200, 301, 302, 307, 308):
         return None, None
-
     checked = 0
     for p in paths:
         status, html, final = fetch(f"{base_url}/{p}", timeout=TIMEOUT)
@@ -160,13 +147,10 @@ def extract_jobs(html, org_name):
     text = ext.get_text()
     if len(text) < 200:
         return []
-
-    # Look for heading-like blocks
     raw_blocks = re.split(r'(?=\b[A-Z][A-Z\s&\-/,]{5,80}[A-Z]\b)', text)
     job_terms = ['volunteer', 'intern', 'apprentice', 'position', 'opening',
                  'job', 'role', 'opportunity', 'hiring', 'apply', 'seeking']
     listings = []
-
     for block in raw_blocks:
         block = block.strip()
         if len(block) < 120:
@@ -187,7 +171,6 @@ def extract_jobs(html, org_name):
             elif any(x in low for x in ['salary', 'full-time', 'full time', 'paid', 'compensation']):
                 role = 'paid_job'
             listings.append({'title': title, 'description': block[:2500], 'role': role})
-
     if not listings:
         score = sum(1 for t in job_terms if t in text.lower())
         if score >= 3 and len(text) > 300:
@@ -204,14 +187,12 @@ def analyze_booking(html, url):
     has_email = bool(re.search(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', html))
     has_phone = bool(re.search(r'[\+\(]?[0-9]{1,4}[\)]?[-.\s]?[0-9]{1,4}[-.\s]?[0-9\s]{4,}', html))
     has_calendar = any(x in html.lower() for x in ['calendly', 'schedule', 'pick a date'])
-
     ext_links = []
     for m in re.finditer(r'href=["\']([^"\']+)["\']', html):
         href = m.group(1).lower()
         if any(x in href for x in ['booking.com', 'airbnb', 'expedia', 'hotels.com',
                                      'checkfront', 'rezdy', 'fareharbor', 'peek']):
             ext_links.append(href)
-
     ext = TextExtractor()
     try:
         ext.feed(html[:250000])
@@ -221,7 +202,6 @@ def analyze_booking(html, url):
     kw_score = sum(1 for kw in ['book now', 'reserve', 'check availability',
                                 'check-in', 'check-out', 'nightly rate', 'per night']
                    if kw in text)
-
     if has_form and kw_score >= 2:
         btype = 'direct_form'
     elif has_iframe or ext_links:
@@ -232,7 +212,6 @@ def analyze_booking(html, url):
         btype = 'email_phone' if kw_score >= 1 else 'unknown'
     else:
         btype = 'unknown'
-
     analysis = {
         'url': url, 'has_form': has_form, 'has_iframe': has_iframe,
         'has_email': has_email, 'has_phone': has_phone,
@@ -249,21 +228,20 @@ def claim_batch(conn, batch_size):
         SELECT id, name, website FROM organizations
         WHERE website IS NOT NULL AND website != ''
           AND last_scrape_attempt IS NULL
+          AND being_processed_since IS NULL
         ORDER BY id
         LIMIT ?
     ''', (batch_size,))
     rows = cur.fetchall()
     now = datetime.now().isoformat()
     for org_id, _, _ in rows:
-        cur.execute('UPDATE organizations SET last_scrape_attempt = ? WHERE id = ?', (now, org_id))
+        cur.execute('UPDATE organizations SET being_processed_since = ? WHERE id = ?', (now, org_id))
     conn.commit()
     return rows
 
 
 def process_org(conn, org_id, name, website):
     cur = conn.cursor()
-
-    # Jobs
     job_url, job_html = discover_page(website, JOB_PATHS, JOB_KW, max_checks=6)
     if job_url and job_html:
         listings = extract_jobs(job_html, name)
@@ -280,8 +258,6 @@ def process_org(conn, org_id, name, website):
             has_jobs = 0
     else:
         has_jobs = 0
-
-    # Stays
     stay_url, stay_html = discover_page(website, STAY_PATHS, STAY_KW, max_checks=6)
     if stay_url and stay_html:
         btype, analysis = analyze_booking(stay_html, stay_url)
@@ -299,10 +275,10 @@ def process_org(conn, org_id, name, website):
         has_stays = 1
     else:
         has_stays = 0
-
     cur.execute('''
-        UPDATE organizations SET has_jobs = ?, has_stays = ? WHERE id = ?
-    ''', (has_jobs, has_stays, org_id))
+        UPDATE organizations SET has_jobs = ?, has_stays = ?, being_processed_since = NULL, last_scrape_attempt = ?
+        WHERE id = ?
+    ''', (has_jobs, has_stays, datetime.now().isoformat(), org_id))
     conn.commit()
     return has_jobs, has_stays
 
@@ -310,30 +286,27 @@ def process_org(conn, org_id, name, website):
 def worker_loop(batch_size=BATCH_SIZE):
     conn = sqlite3.connect(DB_PATH, timeout=30.0)
     conn.execute('PRAGMA journal_mode=WAL')
-
     total_processed = 0
     total_jobs = 0
     total_stays = 0
     total_blacklisted = 0
-
     while True:
         rows = claim_batch(conn, batch_size)
         if not rows:
             print("No more unprocessed organizations. Worker done.")
             break
-
         for org_id, name, website in rows:
             if is_blacklisted(website):
                 total_blacklisted += 1
-                # Mark as processed with no findings
                 cur = conn.cursor()
                 cur.execute('''
-                    UPDATE organizations SET has_jobs = 0, has_stays = 0 WHERE id = ?
-                ''', (org_id,))
+                    UPDATE organizations SET has_jobs = 0, has_stays = 0,
+                    being_processed_since = NULL, last_scrape_attempt = ?
+                    WHERE id = ?
+                ''', (datetime.now().isoformat(), org_id))
                 conn.commit()
                 print(f"[{org_id}] {name[:50]} | BLACKLISTED")
                 continue
-
             try:
                 has_jobs, has_stays = process_org(conn, org_id, name, website)
                 total_processed += 1
@@ -345,8 +318,11 @@ def worker_loop(batch_size=BATCH_SIZE):
             except Exception as e:
                 print(f"[{org_id}] {name[:50]} ERROR: {e}")
                 conn.rollback()
+                # Release the org so another worker can try
+                cur = conn.cursor()
+                cur.execute('UPDATE organizations SET being_processed_since = NULL WHERE id = ?', (org_id,))
+                conn.commit()
             time.sleep(0.2)
-
     conn.close()
     print(f"\nWorker finished: {total_processed} orgs, {total_blacklisted} blacklisted, {total_jobs} jobs, {total_stays} stays")
 

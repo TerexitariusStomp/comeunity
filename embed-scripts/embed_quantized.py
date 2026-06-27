@@ -5,14 +5,14 @@ Each chunk file is a small JSON with base64-encoded quantized vectors.
 """
 import os, json, struct, base64, sqlite3, numpy as np
 
-DB_PATH = r"C:\Users\terex\volunteer-map\backend\organizations.db"
-OUT_DIR = r"C:\Users\terex\volunteer-map\frontend\data"
+DB_PATH = "/home/user/volunteer-map/backend/organizations.db"
+OUT_DIR = "/home/user/volunteer-map/frontend/data"
 CHUNK_RECORDS = 3000  # records per chunk file
 
 def main():
     # Clean up old chunk files
     for f in os.listdir(OUT_DIR):
-        if f.startswith("embeddings-") and f.endswith(".bin"):
+        if f.startswith("embeddings-") and (f.endswith(".bin") or f.endswith(".json")):
             os.remove(os.path.join(OUT_DIR, f))
     for f in ["embeddings-index.json"]:
         p = os.path.join(OUT_DIR, f)
@@ -55,9 +55,8 @@ def main():
     vec_max = float(vectors.max())
     print(f"Vector range: [{vec_min:.4f}, {vec_max:.4f}]")
 
-    # Read metadata
-    with open(os.path.join(OUT_DIR, "embeddings-meta.json"), "r") as f:
-        metadata = json.load(f)
+    # Generate metadata from DB rows
+    metadata = [{"id": r["id"], "lat": r["latitude"], "lon": r["longitude"]} for r in rows]
 
     # Write chunk files
     count = len(rows)

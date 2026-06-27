@@ -1,3 +1,8 @@
 name = "volunteer-map"
 pages_build_output_dir = "frontend"
 compatibility_date = "2026-05-20"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "volunteer-map-db"
+database_id = "e4d0b86d-9d20-470b-8d87-061660ed8c5d"

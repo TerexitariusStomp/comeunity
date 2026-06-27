@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Events — Global Ecovillage Map</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg: #0f0e0c;
+            --surface: #161410;
+            --surface2: #1c1916;
+            --border: rgba(255,255,255,0.07);
+            --text: #e8e0d4;
+            --text-muted: #7a7468;
+            --primary: #f5576c;
+            --primary2: #f093fb;
+            --accent: #86efac;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, var(--primary), var(--primary2));
+            padding: 20px 0;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+        }
+        .header .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .header h1 { font-size: 1.5rem; color: #fff; }
+        .header h1 i { margin-right: 8px; }
+        .header .nav-links { display: flex; gap: 10px; }
+        .header .nav-links a {
+            color: #fff;
+            text-decoration: none;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            background: rgba(255,255,255,0.15);
+            transition: background 0.2s;
+        }
+        .header .nav-links a:hover { background: rgba(255,255,255,0.25); }
+        .stats-bar {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 20px;
+            display: flex;
+            gap: 24px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .stat { text-align: center; }
+        .stat-value { font-size: 1.4rem; font-weight: 700; color: var(--primary); }
+        .stat-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+        .controls {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 0 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .search-input {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px 14px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 14px;
+        }
+        .search-input::placeholder { color: var(--text-muted); }
+        .search-input:focus { outline: none; border-color: var(--primary); }
+        .btn {
+            padding: 10px 18px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: var(--primary); color: #fff; }
+        .btn-primary:hover { background: #e0455a; }
+        .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+        .btn-secondary:hover { background: #25221e; }
+        .grid {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px 40px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 16px;
+        }
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            transition: border-color 0.2s;
+        }
+        .card:hover { border-color: rgba(245,87,108,0.3); }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .card-type {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 3px 10px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary), var(--primary2));
+            color: #fff;
+        }
+        .card-title {
+            font-size: 1.05rem;
+            font-weight: 600;
+            line-height: 1.3;
+            margin-bottom: 4px;
+        }
+        .card-org {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+        }
+        .card-org i { margin-right: 4px; }
+        .field-row {
+            display: flex;
+            gap: 8px;
+            padding: 4px 0;
+            font-size: 0.85rem;
+        }
+        .field-label {
+            color: var(--text-muted);
+            font-weight: 500;
+            min-width: 70px;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            padding-top: 1px;
+        }
+        .field-value { color: var(--text); flex: 1; word-break: break-word; }
+        .card-desc {
+            color: var(--text);
+            font-size: 0.88rem;
+            line-height: 1.55;
+            margin-bottom: 14px;
+            flex: 1;
+            display: -webkit-box;
+            -webkit-line-clamp: 4;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .card-footer {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .card-footer a, .card-footer button {
+            padding: 7px 14px;
+            border-radius: 7px;
+            font-size: 0.82rem;
+            text-decoration: none;
+            font-weight: 500;
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-visit { background: var(--primary); color: #fff; border: none; }
+        .btn-visit:hover { background: #e0455a; }
+        .btn-map { background: var(--surface2); color: var(--text); }
+        .btn-map:hover { background: #25221e; }
+        .btn-details { background: var(--surface2); color: var(--text); }
+        .btn-details:hover { background: #25221e; }
+        .empty {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+        .empty i { font-size: 2rem; margin-bottom: 12px; }
+        .empty h3 { margin-bottom: 8px; color: var(--text); }
+        .pagination {
+            max-width: 1200px;
+            margin: 0 auto 40px;
+            padding: 0 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 16px;
+        }
+        .pagination button {
+            padding: 8px 16px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            color: var(--text);
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+        .page-info { color: var(--text-muted); font-size: 14px; }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            max-width: 600px;
+            width: 100%;
+            max-height: 85vh;
+            overflow-y: auto;
+            padding: 24px;
+            position: relative;
+        }
+        .modal-close {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            font-size: 24px;
+            color: var(--text-muted);
+            cursor: pointer;
+            background: none;
+            border: none;
+        }
+        .modal-title { font-size: 1.3rem; font-weight: 600; margin-bottom: 4px; }
+        .modal-org { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 16px; }
+        .modal-section { margin-bottom: 16px; }
+        .modal-section-title {
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+        .modal-fields .field-row { padding: 6px 0; }
+        .modal-desc {
+            font-size: 0.9rem;
+            line-height: 1.6;
+            color: var(--text);
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .modal-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+        .modal-actions a {
+            padding: 10px 18px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .modal-actions .btn-visit { background: var(--primary); color: #fff; }
+        .modal-actions .btn-map { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+        .loading { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .loading i { font-size: 2rem; animation: spin 1s linear infinite; color: var(--primary); }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        /* View toggle */
+        .view-toggle {
+            display: flex;
+            gap: 4px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 3px;
+        }
+        .view-toggle button {
+            padding: 6px 14px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .view-toggle button.active {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        /* Calendar view */
+        .calendar-view { display: none; max-width: 1200px; margin: 0 auto; padding: 0 20px 40px; }
+        .calendar-view.active { display: block; }
+        .calendar-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+        .calendar-header h2 { font-size: 1.3rem; }
+        .calendar-nav { display: flex; gap: 8px; align-items: center; }
+        .calendar-nav button {
+            padding: 8px 14px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            color: var(--text);
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .calendar-nav button:hover { background: var(--surface2); }
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 1px;
+            background: var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .calendar-day-header {
+            background: var(--surface2);
+            padding: 8px;
+            text-align: center;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+        .calendar-day {
+            background: var(--surface);
+            min-height: 90px;
+            padding: 4px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            overflow: hidden;
+        }
+        .calendar-day.other-month { opacity: 0.3; }
+        .calendar-day.today { background: var(--surface2); border: 1px solid var(--primary); }
+        .calendar-day-num {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            padding: 2px 4px;
+        }
+        .calendar-day.today .calendar-day-num { color: var(--primary); }
+        .calendar-event {
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(245,87,108,0.15);
+            color: var(--text);
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            border-left: 2px solid var(--primary);
+        }
+        .calendar-event:hover { background: rgba(245,87,108,0.3); }
+        .calendar-event.online { border-left-color: var(--accent); background: rgba(134,239,172,0.1); }
+        .calendar-event-more {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            padding: 1px 4px;
+            cursor: pointer;
+        }
+        @media (max-width: 600px) {
+            .grid { grid-template-columns: 1fr; }
+            .header h1 { font-size: 1.2rem; }
+            .calendar-day { min-height: 60px; }
+            .calendar-event { font-size: 0.6rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <h1><i class="fas fa-calendar-alt"></i> Ecovillage Events</h1>
+            <div class="nav-links">
+                <a href="/"><i class="fas fa-map"></i> Map</a>
+                <a href="/jobs-stays/"><i class="fas fa-briefcase"></i> Jobs & Stays</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="stats-bar">
+        <div class="stat">
+            <div class="stat-value" id="statEvents">0</div>
+            <div class="stat-label">Total Events</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value" id="statOrgs">0</div>
+            <div class="stat-label">Organizations</div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <input type="text" class="search-input" id="searchInput" placeholder="Search events by title, description, organization, country...">
+        <button class="btn btn-primary" id="searchBtn"><i class="fas fa-search"></i> Search</button>
+        <button class="btn btn-secondary" id="clearBtn"><i class="fas fa-times"></i> Clear</button>
+        <select id="formatFilter" class="filter-select" style="padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:14px;cursor:pointer;">
+            <option value="">All Events</option>
+            <option value="remote">Remote Only</option>
+            <option value="in_person">In Person Only</option>
+        </select>
+        <div class="view-toggle">
+            <button id="viewCards" class="active"><i class="fas fa-th-large"></i> Cards</button>
+            <button id="viewCalendar"><i class="fas fa-calendar"></i> Calendar</button>
+        </div>
+    </div>
+
+    <div id="content">
+        <div class="loading"><i class="fas fa-circle-notch"></i><p>Loading events...</p></div>
+    </div>
+
+    <div class="calendar-view" id="calendarView">
+        <div class="calendar-header">
+            <h2 id="calendarMonthYear"></h2>
+            <div class="calendar-nav">
+                <button id="calPrev"><i class="fas fa-chevron-left"></i></button>
+                <button id="calToday">Today</button>
+                <button id="calNext"><i class="fas fa-chevron-right"></i></button>
+            </div>
+        </div>
+        <div class="calendar-grid" id="calendarGrid"></div>
+    </div>
+
+    <div class="pagination" id="pagination" style="display:none;">
+        <button id="prevBtn"><i class="fas fa-chevron-left"></i> Prev</button>
+        <span class="page-info" id="pageInfo">Page 1</span>
+        <button id="nextBtn">Next <i class="fas fa-chevron-right"></i></button>
+    </div>
+
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal" id="modalBody"></div>
+    </div>
+
+    <script>
+        const API_BASE = '';
+        let currentPage = 0;
+        const PAGE_SIZE = 24;
+        let currentSearch = '';
+        let allItems = [];
+
+        function esc(s) {
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+
+        function fieldRow(label, value, icon) {
+            const hasValue = value && value !== 'None' && value !== 'null' && value !== '';
+            if (!hasValue) return '';
+            const iconHtml = icon ? '<i class="fas ' + icon + '"></i> ' : '';
+            return '<div class="field-row"><span class="field-label">' + iconHtml + label + '</span><span class="field-value">' + esc(String(value)) + '</span></div>';
+        }
+
+        async function loadStats() {
+            try {
+                const r = await fetch(API_BASE + '/api/statistics/');
+                const d = await r.json();
+                document.getElementById('statOrgs').textContent = d.total_organizations.toLocaleString();
+            } catch(e) { console.error('stats', e); }
+        }
+
+        async function loadContent() {
+            const content = document.getElementById('content');
+            content.innerHTML = '<div class="loading"><i class="fas fa-circle-notch"></i><p>Loading events...</p></div>';
+            document.getElementById('pagination').style.display = 'none';
+
+            var formatFilter = document.getElementById('formatFilter').value;
+            const url = API_BASE + '/api/events-detailed/?skip=' + (currentPage * PAGE_SIZE) + '&limit=' + PAGE_SIZE + '&search=' + encodeURIComponent(currentSearch) + (formatFilter ? '&event_format=' + formatFilter : '');
+
+            try {
+                const r = await fetch(url);
+                const data = await r.json();
+                allItems = data;
+                renderCards(data);
+                updatePagination(data.length);
+                if (data.length > 0) {
+                    document.getElementById('statEvents').textContent = (currentPage * PAGE_SIZE + data.length).toLocaleString();
+                }
+            } catch(e) {
+                content.innerHTML = '<div class="empty"><i class="fas fa-exclamation-circle"></i><p>Error loading events. <a href="#" onclick="location.reload()">Retry</a></p></div>';
+            }
+        }
+
+        function renderCards(items) {
+            const content = document.getElementById('content');
+            if (!items || items.length === 0) {
+                content.innerHTML = '<div class="empty"><i class="fas fa-search"></i><h3>No events found</h3><p>Try a different search term.</p></div>';
+                return;
+            }
+
+            const html = '<div class="grid">' + items.map(function(item, idx) {
+                var org = item.organization || {};
+                var title = esc(item.title || 'Untitled Event');
+                var orgName = esc(org.name || 'Unknown');
+                var locationStr = [org.city, org.country].filter(Boolean).join(', ');
+                var eventDate = item.start_date ? new Date(item.start_date).toLocaleDateString() : '';
+                var endDate = item.end_date ? new Date(item.end_date).toLocaleDateString() : '';
+                var dateStr = eventDate ? (endDate && endDate !== eventDate ? eventDate + ' - ' + endDate : eventDate) : '';
+                var eventUrl = item.event_url || item.registration_url || org.website || '#';
+                var mapUrl = org.latitude && org.longitude ? '/?lat=' + org.latitude + '&lng=' + org.longitude + '&zoom=12' : '/';
+
+                var fields = fieldRow('Location', locationStr, 'fa-map-marker-alt');
+                if (dateStr) fields += fieldRow('Date', dateStr, 'fa-calendar');
+                if (item.is_online) fields += fieldRow('Format', 'Online', 'fa-video');
+                if (item.is_in_person) fields += fieldRow('Format', 'In Person', 'fa-users');
+
+                var desc = esc(item.description || '').substring(0, 200);
+                if ((item.description || '').length > 200) desc += '...';
+
+                return '<article class="card">' +
+                    '<div class="card-header"><span class="card-type">Event</span></div>' +
+                    '<h3 class="card-title">' + title + '</h3>' +
+                    '<div class="card-org"><i class="fas fa-building"></i> ' + orgName + '</div>' +
+                    '<div class="card-fields">' + fields + '</div>' +
+                    '<p class="card-desc">' + desc + '</p>' +
+                    '<div class="card-footer">' +
+                    '<button class="btn-details" onclick="showDetail(' + idx + ')"><i class="fas fa-info-circle"></i> Details</button>' +
+                    '<a href="' + esc(eventUrl) + '" target="_blank" rel="noopener" class="btn-visit"><i class="fas fa-external-link-alt"></i> Visit</a>' +
+                    '<a href="' + mapUrl + '" class="btn-map"><i class="fas fa-map-marker-alt"></i> Map</a>' +
+                    '</div></article>';
+            }).join('') + '</div>';
+            content.innerHTML = html;
+        }
+
+        function showDetail(idx) {
+            var item = allItems[idx];
+            if (!item) return;
+            var org = item.organization || {};
+            var locationStr = [org.city, org.country].filter(Boolean).join(', ');
+            var eventDate = item.start_date ? new Date(item.start_date).toLocaleDateString() : '';
+            var endDate = item.end_date ? new Date(item.end_date).toLocaleDateString() : '';
+            var dateStr = eventDate ? (endDate && endDate !== eventDate ? eventDate + ' - ' + endDate : eventDate) : '';
+            var eventUrl = item.event_url || item.registration_url || org.website || '#';
+            var mapUrl = org.latitude && org.longitude ? '/?lat=' + org.latitude + '&lng=' + org.longitude + '&zoom=12' : '/';
+
+            var fields = fieldRow('Organization', org.name, 'fa-building');
+            fields += fieldRow('Location', locationStr, 'fa-map-marker-alt');
+            if (dateStr) fields += fieldRow('Date', dateStr, 'fa-calendar');
+            if (item.is_online) fields += fieldRow('Format', 'Online', 'fa-video');
+            if (item.is_in_person) fields += fieldRow('Format', 'In Person', 'fa-users');
+            if (item.event_url) fields += fieldRow('Event Page', item.event_url, 'fa-link');
+            if (item.registration_url) fields += fieldRow('Registration', item.registration_url, 'fa-ticket');
+            if (org.website) fields += fieldRow('Website', org.website, 'fa-globe');
+
+            var desc = item.description ? esc(item.description) : '<span style="color:var(--text-muted);font-style:italic;">No description available</span>';
+
+            document.getElementById('modalBody').innerHTML =
+                '<button class="modal-close" onclick="closeModal()">&times;</button>' +
+                '<span class="card-type" style="display:inline-block;margin-bottom:8px;">Event</span>' +
+                '<h2 class="modal-title">' + esc(item.title || 'Untitled Event') + '</h2>' +
+                '<div class="modal-org"><i class="fas fa-building"></i> ' + esc(org.name || 'Unknown') + '</div>' +
+                '<div class="modal-section"><div class="modal-section-title">Details</div><div class="modal-fields">' + fields + '</div></div>' +
+                '<div class="modal-section"><div class="modal-section-title">Description</div><div class="modal-desc">' + desc + '</div></div>' +
+                '<div class="modal-actions">' +
+                '<a href="' + esc(eventUrl) + '" target="_blank" rel="noopener" class="btn-visit"><i class="fas fa-external-link-alt"></i> Visit Page</a>' +
+                '<a href="' + mapUrl + '" class="btn-map"><i class="fas fa-map-marker-alt"></i> View on Map</a>' +
+                '</div>';
+            document.getElementById('modalOverlay').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('modalOverlay').classList.remove('active');
+        }
+
+        function updatePagination(count) {
+            const pagination = document.getElementById('pagination');
+            if (count === PAGE_SIZE || currentPage > 0) {
+                pagination.style.display = 'flex';
+                document.getElementById('prevBtn').disabled = currentPage === 0;
+                document.getElementById('nextBtn').disabled = count < PAGE_SIZE;
+                document.getElementById('pageInfo').textContent = 'Page ' + (currentPage + 1);
+            } else {
+                pagination.style.display = 'none';
+            }
+        }
+
+        // Events
+        document.getElementById('searchBtn').addEventListener('click', function() {
+            currentSearch = document.getElementById('searchInput').value.trim();
+            currentPage = 0;
+            loadContent();
+        });
+        document.getElementById('searchInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                currentSearch = this.value.trim();
+                currentPage = 0;
+                loadContent();
+            }
+        });
+        document.getElementById('clearBtn').addEventListener('click', function() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('formatFilter').value = '';
+            currentSearch = '';
+            currentPage = 0;
+            loadContent();
+        });
+        document.getElementById('formatFilter').addEventListener('change', function() {
+            currentPage = 0;
+            if (currentView === 'calendar') {
+                loadCalendarEvents();
+            } else {
+                loadContent();
+            }
+        });
+        document.getElementById('prevBtn').addEventListener('click', function() {
+            if (currentPage > 0) { currentPage--; loadContent(); }
+        });
+        document.getElementById('nextBtn').addEventListener('click', function() {
+            currentPage++; loadContent();
+        });
+        document.getElementById('modalOverlay').addEventListener('click', function(e) {
+            if (e.target === this) closeModal();
+        });
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeModal();
+        });
+
+        // Calendar view
+        let currentView = 'cards';
+        let calendarDate = new Date();
+        let calendarEvents = [];
+
+        document.getElementById('viewCards').addEventListener('click', function() {
+            currentView = 'cards';
+            this.classList.add('active');
+            document.getElementById('viewCalendar').classList.remove('active');
+            document.getElementById('content').style.display = '';
+            document.getElementById('calendarView').classList.remove('active');
+            document.getElementById('pagination').style.display = '';
+        });
+
+        document.getElementById('viewCalendar').addEventListener('click', function() {
+            currentView = 'calendar';
+            this.classList.add('active');
+            document.getElementById('viewCards').classList.remove('active');
+            document.getElementById('content').style.display = 'none';
+            document.getElementById('calendarView').classList.add('active');
+            document.getElementById('pagination').style.display = 'none';
+            loadCalendarEvents();
+        });
+
+        document.getElementById('calPrev').addEventListener('click', function() {
+            calendarDate.setMonth(calendarDate.getMonth() - 1);
+            loadCalendarEvents();
+        });
+        document.getElementById('calNext').addEventListener('click', function() {
+            calendarDate.setMonth(calendarDate.getMonth() + 1);
+            loadCalendarEvents();
+        });
+        document.getElementById('calToday').addEventListener('click', function() {
+            calendarDate = new Date();
+            loadCalendarEvents();
+        });
+
+        async function loadCalendarEvents() {
+            var y = calendarDate.getFullYear();
+            var m = calendarDate.getMonth() + 1; // JS months are 0-indexed
+            try {
+                var formatFilter = document.getElementById('formatFilter').value;
+                const r = await fetch(API_BASE + '/api/events-detailed/?limit=5000&year=' + y + '&month=' + m + '&search=' + encodeURIComponent(currentSearch) + (formatFilter ? '&event_format=' + formatFilter : ''));
+                calendarEvents = await r.json();
+                renderCalendar();
+            } catch(e) {
+                console.error('calendar load error', e);
+                document.getElementById('calendarGrid').innerHTML = '<div style="grid-column:7;padding:40px;text-align:center;color:var(--text-muted);">Error loading calendar events</div>';
+            }
+        }
+
+        function renderCalendar() {
+            const year = calendarDate.getFullYear();
+            const month = calendarDate.getMonth();
+            const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            document.getElementById('calendarMonthYear').textContent = monthNames[month] + ' ' + year;
+
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            const startDayOfWeek = firstDay.getDay();
+            const daysInMonth = lastDay.getDate();
+
+            const eventsByDate = {};
+            calendarEvents.forEach(function(ev) {
+                if (!ev.start_date) return;
+                // Parse ISO date string as local date (avoid UTC shift)
+                var parts = ev.start_date.split('T')[0].split('-');
+                var d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+                if (d.getFullYear() === year && d.getMonth() === month) {
+                    const day = d.getDate();
+                    if (!eventsByDate[day]) eventsByDate[day] = [];
+                    eventsByDate[day].push(ev);
+                }
+            });
+
+            const dayHeaders = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+            let html = '';
+            dayHeaders.forEach(function(d) {
+                html += '<div class="calendar-day-header">' + d + '</div>';
+            });
+
+            const prevMonthDays = new Date(year, month, 0).getDate();
+            for (let i = startDayOfWeek - 1; i >= 0; i--) {
+                html += '<div class="calendar-day other-month"><div class="calendar-day-num">' + (prevMonthDays - i) + '</div></div>';
+            }
+
+            const today = new Date();
+            for (let day = 1; day <= daysInMonth; day++) {
+                const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
+                const dayEvents = eventsByDate[day] || [];
+                let eventHtml = '';
+                const maxShow = 3;
+                dayEvents.slice(0, maxShow).forEach(function(ev, idx) {
+                    const onlineClass = ev.is_online ? ' online' : '';
+                    var timeStr = '';
+                    if (ev.start_date && ev.start_date.indexOf('T') > -1) {
+                        var timePart = ev.start_date.split('T')[1];
+                        if (timePart && timePart !== '00:00:00') {
+                            var h = parseInt(timePart.substring(0, 2));
+                            var m = timePart.substring(3, 5);
+                            var ampm = h >= 12 ? 'PM' : 'AM';
+                            var h12 = h % 12 || 12;
+                            timeStr = h12 + ':' + m + ' ' + ampm + ' ';
+                        }
+                    }
+                    eventHtml += '<div class="calendar-event' + onlineClass + '" onclick="showCalendarEvent(' + calendarEvents.indexOf(ev) + ')" title="' + esc(ev.title || '') + '">' + timeStr + esc((ev.title || '').substring(0, 25)) + '</div>';
+                });
+                if (dayEvents.length > maxShow) {
+                    eventHtml += '<div class="calendar-event-more">+' + (dayEvents.length - maxShow) + ' more</div>';
+                }
+                html += '<div class="calendar-day' + (isToday ? ' today' : '') + '"><div class="calendar-day-num">' + day + '</div>' + eventHtml + '</div>';
+            }
+
+            // Next month filler days
+            const totalCells = startDayOfWeek + daysInMonth;
+            const remaining = (7 - (totalCells % 7)) % 7;
+            for (let i = 1; i <= remaining; i++) {
+                html += '<div class="calendar-day other-month"><div class="calendar-day-num">' + i + '</div></div>';
+            }
+
+            document.getElementById('calendarGrid').innerHTML = html;
+        }
+
+        function showCalendarEvent(idx) {
+            var item = calendarEvents[idx];
+            if (!item) return;
+            // Reuse the existing showDetail by finding the item in allItems
+            // If not in allItems, show a simplified modal
+            var org = item.organization || {};
+            var locationStr = [org.city, org.country].filter(Boolean).join(', ');
+            var eventDate = item.start_date ? new Date(item.start_date).toLocaleString() : '';
+            var endDate = item.end_date ? new Date(item.end_date).toLocaleString() : '';
+            var eventUrl = item.event_url || item.registration_url || org.website || '#';
+            var mapUrl = org.latitude && org.longitude ? '/?lat=' + org.latitude + '&lng=' + org.longitude + '&zoom=12' : '/';
+
+            var fields = fieldRow('Organization', org.name, 'fa-building');
+            fields += fieldRow('Location', locationStr, 'fa-map-marker-alt');
+            if (eventDate) fields += fieldRow('Start', eventDate, 'fa-calendar');
+            if (endDate) fields += fieldRow('End', endDate, 'fa-calendar');
+            if (item.is_online) fields += fieldRow('Format', 'Online', 'fa-video');
+            if (item.is_in_person) fields += fieldRow('Format', 'In Person', 'fa-users');
+            if (item.registration_url) fields += fieldRow('Join Link', item.registration_url, 'fa-link');
+            if (item.event_url) fields += fieldRow('Event Page', item.event_url, 'fa-link');
+            if (org.website) fields += fieldRow('Website', org.website, 'fa-globe');
+
+            var desc = item.description ? esc(item.description) : '<span style="color:var(--text-muted);font-style:italic;">No description available</span>';
+
+            document.getElementById('modalBody').innerHTML =
+                '<button class="modal-close" onclick="closeModal()">&times;</button>' +
+                '<span class="card-type" style="display:inline-block;margin-bottom:8px;">Event</span>' +
+                '<h2 class="modal-title">' + esc(item.title || 'Untitled Event') + '</h2>' +
+                '<div class="modal-org"><i class="fas fa-building"></i> ' + esc(org.name || 'Unknown') + '</div>' +
+                '<div class="modal-section"><div class="modal-section-title">Details</div><div class="modal-fields">' + fields + '</div></div>' +
+                '<div class="modal-section"><div class="modal-section-title">Description</div><div class="modal-desc">' + desc + '</div></div>' +
+                '<div class="modal-actions">' +
+                '<a href="' + esc(eventUrl) + '" target="_blank" rel="noopener" class="btn-visit"><i class="fas fa-external-link-alt"></i> Visit Page</a>' +
+                '<a href="' + mapUrl + '" class="btn-map"><i class="fas fa-map-marker-alt"></i> View on Map</a>' +
+                '</div>';
+            document.getElementById('modalOverlay').classList.add('active');
+        }
+
+        // Init
+        loadStats();
+        loadContent();
+    </script>
+</body>
+</html>

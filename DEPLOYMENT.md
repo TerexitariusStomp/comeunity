@@ -145,8 +145,8 @@ sudo systemctl restart volunteer-map
 ## Support
 
 If you encounter issues, check:
-- Cloudflare Tunnel documentation: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/
-- FastAPI deployment guide: https://fastapi.tiangolo.com/deployment/
+- Cloudflare Pages documentation: https://developers.cloudflare.com/pages/
+- Cloudflare D1 documentation: https://developers.cloudflare.com/d1/
 - Contact support if needed.
 
 ---
