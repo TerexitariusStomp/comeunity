@@ -11,8 +11,9 @@ Then import each with:
 import sqlite3
 import os
 
-DB_PATH = "/home/user/volunteer-map/backend/organizations.db"
-OUT_DIR = "/home/user/volunteer-map"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, 'backend', 'organizations.db')
+OUT_DIR = BASE_DIR
 
 # D1 schema columns (must match schema.sql)
 D1_COLUMNS = {
