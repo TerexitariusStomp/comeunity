@@ -3,31 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Events — Global Ecovillage Map</title>
+    <title>Events — Temple Earth Volunteer Map</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Serif+Display:ital@0;1&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
-            --bg: #0f0e0c;
-            --surface: #161410;
-            --surface2: #1c1916;
-            --border: rgba(255,255,255,0.07);
-            --text: #e8e0d4;
-            --text-muted: #7a7468;
-            --primary: #f5576c;
-            --primary2: #f093fb;
-            --accent: #86efac;
+            --background: #0b1c10;
+            --foreground: #e8d9b8;
+            --card: #122118;
+            --card-foreground: #e8d9b8;
+            --primary: #c97a3a;
+            --primary-foreground: #0b1c10;
+            --secondary: #1c3324;
+            --secondary-foreground: #e8d9b8;
+            --muted: #162a1e;
+            --muted-foreground: #7da882;
+            --accent: #d4a84b;
+            --accent-foreground: #0b1c10;
+            --destructive: #d4183d;
+            --border: rgba(120, 170, 120, 0.18);
+            --input-background: #1c3324;
+            --radius: 2px;
+            --font-serif: 'DM Serif Display', serif;
+            --font-sans: 'Outfit', system-ui, sans-serif;
+            --font-mono: 'DM Mono', monospace;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-            background: var(--bg);
-            color: var(--text);
+            font-family: var(--font-sans);
+            background: var(--background);
+            background-image: radial-gradient(ellipse at 50% 0%, rgba(201, 122, 58, 0.06) 0%, transparent 60%),
+                              radial-gradient(ellipse at 50% 100%, rgba(125, 168, 130, 0.05) 0%, transparent 60%);
+            color: var(--foreground);
             min-height: 100vh;
+            font-size: 15px;
         }
         .header {
-            background: linear-gradient(135deg, var(--primary), var(--primary2));
-            padding: 20px 0;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(11, 28, 16, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            padding: 14px 0;
         }
         .header .container {
             max-width: 1200px;
@@ -39,80 +60,174 @@
             flex-wrap: wrap;
             gap: 12px;
         }
-        .header h1 { font-size: 1.5rem; color: #fff; }
-        .header h1 i { margin-right: 8px; }
-        .header .nav-links { display: flex; gap: 10px; }
-        .header .nav-links a {
-            color: #fff;
-            text-decoration: none;
-            padding: 6px 14px;
-            border-radius: 6px;
-            font-size: 13px;
-            font-weight: 500;
-            background: rgba(255,255,255,0.15);
-            transition: background 0.2s;
-        }
-        .header .nav-links a:hover { background: rgba(255,255,255,0.25); }
-        .stats-bar {
-            background: var(--surface);
-            border-bottom: 1px solid var(--border);
-            padding: 12px 20px;
+        .brand {
             display: flex;
-            gap: 24px;
+            align-items: center;
+            gap: 10px;
+        }
+        .brand-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: rgba(212, 168, 75, 0.15);
+            border: 1px solid rgba(212, 168, 75, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent);
+            font-size: 12px;
+        }
+        .header h1 {
+            font-family: var(--font-serif);
+            font-size: 1.25rem;
+            font-weight: 400;
+            color: var(--foreground);
+            letter-spacing: -0.02em;
+        }
+        .header .nav-links { display: flex; gap: 8px; }
+        .header .nav-links a {
+            color: var(--muted-foreground);
+            text-decoration: none;
+            padding: 6px 12px;
+            border-radius: var(--radius);
+            font-size: 12px;
+            font-weight: 500;
+            border: 1px solid var(--border);
+            background: transparent;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .header .nav-links a:hover {
+            color: var(--foreground);
+            border-color: var(--muted-foreground);
+            background: var(--secondary);
+        }
+        .stats-bar {
+            background: var(--card);
+            border-bottom: 1px solid var(--border);
+            padding: 14px 20px;
+            display: flex;
+            gap: 32px;
             justify-content: center;
             flex-wrap: wrap;
         }
         .stat { text-align: center; }
-        .stat-value { font-size: 1.4rem; font-weight: 700; color: var(--primary); }
-        .stat-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+        .stat-value {
+            font-family: var(--font-mono);
+            font-size: 1.5rem;
+            font-weight: 500;
+            color: var(--foreground);
+            line-height: 1;
+        }
+        .stat-label {
+            font-family: var(--font-sans);
+            font-size: 0.65rem;
+            color: var(--muted-foreground);
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            margin-top: 4px;
+        }
         .controls {
             max-width: 1200px;
-            margin: 20px auto;
+            margin: 24px auto;
             padding: 0 20px;
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
             align-items: center;
         }
+        .search-wrap {
+            flex: 1;
+            min-width: 220px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 0 12px;
+            height: 40px;
+        }
+        .search-wrap i {
+            color: var(--muted-foreground);
+            font-size: 12px;
+        }
         .search-input {
             flex: 1;
-            min-width: 200px;
-            padding: 10px 14px;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: var(--text);
-            font-size: 14px;
-        }
-        .search-input::placeholder { color: var(--text-muted); }
-        .search-input:focus { outline: none; border-color: var(--primary); }
-        .btn {
-            padding: 10px 18px;
+            background: transparent;
             border: none;
-            border-radius: 8px;
+            color: var(--foreground);
+            font-size: 13px;
+            font-family: var(--font-sans);
+            outline: none;
+            min-width: 0;
+        }
+        .search-input::placeholder { color: var(--muted-foreground); opacity: 0.6; }
+        .btn {
+            padding: 0 14px;
+            height: 40px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
             cursor: pointer;
-            font-size: 14px;
+            font-size: 12px;
             font-weight: 500;
             transition: all 0.2s;
             text-decoration: none;
             display: inline-flex;
             align-items: center;
             gap: 6px;
+            font-family: var(--font-sans);
+            background: var(--secondary);
+            color: var(--foreground);
         }
-        .btn-primary { background: var(--primary); color: #fff; }
-        .btn-primary:hover { background: #e0455a; }
-        .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
-        .btn-secondary:hover { background: #25221e; }
-        .btn-ics { background: var(--accent); color: #000; }
-        .btn-ics:hover { background: #6ee7a8; }
+        .btn:hover { background: var(--muted); border-color: var(--muted-foreground); }
+        .btn-primary {
+            background: var(--primary);
+            color: var(--primary-foreground);
+            border-color: var(--primary);
+        }
+        .btn-primary:hover { background: #b56a2e; border-color: #b56a2e; }
+        .btn-ghost {
+            background: transparent;
+            color: var(--muted-foreground);
+            border-color: transparent;
+        }
+        .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
+        .btn-ics {
+            background: rgba(212, 168, 75, 0.12);
+            color: var(--accent);
+            border-color: rgba(212, 168, 75, 0.35);
+        }
+        .btn-ics:hover { background: rgba(212, 168, 75, 0.2); border-color: var(--accent); }
+        .filter-select {
+            padding: 0 12px;
+            height: 40px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--input-background);
+            color: var(--foreground);
+            font-size: 12px;
+            font-family: var(--font-sans);
+            cursor: pointer;
+            outline: none;
+        }
+        .filter-select:focus { border-color: var(--accent); }
         .empty {
             text-align: center;
             padding: 60px 20px;
-            color: var(--text-muted);
+            color: var(--muted-foreground);
+            font-family: var(--font-sans);
         }
-        .empty i { font-size: 2rem; margin-bottom: 12px; }
-        .loading { text-align: center; padding: 60px 20px; color: var(--text-muted); }
-        .loading i { font-size: 2rem; animation: spin 1s linear infinite; color: var(--primary); }
+        .empty i { font-size: 2rem; margin-bottom: 12px; color: var(--muted-foreground); opacity: 0.5; }
+        .loading {
+            text-align: center;
+            padding: 80px 20px;
+            color: var(--muted-foreground);
+            font-family: var(--font-sans);
+        }
+        .loading i { font-size: 1.5rem; animation: spin 1s linear infinite; color: var(--primary); }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
         .calendar-view { max-width: 1200px; margin: 0 auto; padding: 0 20px 40px; }
@@ -120,80 +235,99 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 16px;
+            margin-bottom: 18px;
         }
-        .calendar-header h2 { font-size: 1.3rem; }
-        .calendar-nav { display: flex; gap: 8px; align-items: center; }
+        .calendar-header h2 {
+            font-family: var(--font-serif);
+            font-size: 1.6rem;
+            font-weight: 400;
+            color: var(--foreground);
+            letter-spacing: -0.01em;
+        }
+        .calendar-nav { display: flex; gap: 6px; align-items: center; }
         .calendar-nav button {
-            padding: 8px 14px;
-            background: var(--surface);
+            padding: 0 14px;
+            height: 36px;
+            background: var(--secondary);
             border: 1px solid var(--border);
-            border-radius: 7px;
-            color: var(--text);
+            border-radius: var(--radius);
+            color: var(--foreground);
             cursor: pointer;
-            font-size: 14px;
+            font-size: 12px;
+            font-family: var(--font-sans);
+            transition: all 0.2s;
         }
-        .calendar-nav button:hover { background: var(--surface2); }
+        .calendar-nav button:hover { background: var(--muted); border-color: var(--muted-foreground); }
         .calendar-grid {
             display: grid;
             grid-template-columns: repeat(7, 1fr);
             gap: 1px;
             background: var(--border);
-            border-radius: 10px;
+            border-radius: 4px;
             overflow: hidden;
+            border: 1px solid var(--border);
         }
         .calendar-day-header {
-            background: var(--surface2);
-            padding: 8px;
+            background: var(--secondary);
+            padding: 10px 6px;
             text-align: center;
-            font-size: 0.75rem;
-            font-weight: 600;
-            color: var(--text-muted);
+            font-size: 0.65rem;
+            font-weight: 500;
+            color: var(--muted-foreground);
             text-transform: uppercase;
+            letter-spacing: 0.12em;
+            font-family: var(--font-sans);
         }
         .calendar-day {
-            background: var(--surface);
-            min-height: 90px;
-            padding: 4px;
+            background: var(--card);
+            min-height: 100px;
+            padding: 6px;
             display: flex;
             flex-direction: column;
-            gap: 2px;
+            gap: 3px;
             overflow: hidden;
+            transition: background 0.15s;
         }
-        .calendar-day.other-month { opacity: 0.3; }
-        .calendar-day.today { background: var(--surface2); border: 1px solid var(--primary); }
+        .calendar-day:hover { background: rgba(28, 51, 36, 0.5); }
+        .calendar-day.other-month { opacity: 0.35; background: rgba(18, 33, 24, 0.6); }
+        .calendar-day.today { background: rgba(201, 122, 58, 0.08); box-shadow: inset 0 0 0 1px var(--primary); }
         .calendar-day-num {
-            font-size: 0.8rem;
-            font-weight: 600;
-            color: var(--text-muted);
-            padding: 2px 4px;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--muted-foreground);
+            padding: 0 2px 4px;
         }
         .calendar-day.today .calendar-day-num { color: var(--primary); }
         .calendar-event {
-            font-size: 0.7rem;
-            padding: 2px 6px;
-            border-radius: 4px;
-            background: rgba(245,87,108,0.15);
-            color: var(--text);
+            font-size: 0.68rem;
+            padding: 3px 6px;
+            border-radius: 1px;
+            background: rgba(201, 122, 58, 0.12);
+            color: var(--foreground);
             cursor: pointer;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
             border-left: 2px solid var(--primary);
+            font-family: var(--font-sans);
+            transition: background 0.15s;
         }
-        .calendar-event:hover { background: rgba(245,87,108,0.3); }
-        .calendar-event.online { border-left-color: var(--accent); background: rgba(134,239,172,0.1); }
+        .calendar-event:hover { background: rgba(201, 122, 58, 0.25); }
+        .calendar-event.online { border-left-color: var(--accent); background: rgba(212, 168, 75, 0.12); }
+        .calendar-event.online:hover { background: rgba(212, 168, 75, 0.2); }
         .calendar-event-more {
-            font-size: 0.65rem;
-            color: var(--text-muted);
+            font-size: 0.6rem;
+            color: var(--muted-foreground);
             padding: 1px 4px;
             cursor: pointer;
+            font-family: var(--font-mono);
         }
         .modal-overlay {
             display: none;
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.7);
+            background: rgba(0,0,0,0.65);
             z-index: 2000;
             justify-content: center;
             align-items: center;
@@ -201,82 +335,123 @@
         }
         .modal-overlay.active { display: flex; }
         .modal {
-            background: var(--surface);
+            background: var(--card);
             border: 1px solid var(--border);
-            border-radius: 16px;
-            max-width: 600px;
+            border-radius: 4px;
+            max-width: 560px;
             width: 100%;
             max-height: 85vh;
             overflow-y: auto;
-            padding: 24px;
+            padding: 28px;
             position: relative;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
         }
         .modal-close {
             position: absolute;
             top: 16px;
             right: 16px;
-            font-size: 24px;
-            color: var(--text-muted);
+            font-size: 22px;
+            color: var(--muted-foreground);
             cursor: pointer;
             background: none;
             border: none;
+            transition: color 0.2s;
         }
-        .modal-title { font-size: 1.3rem; font-weight: 600; margin-bottom: 4px; }
-        .modal-org { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 16px; }
-        .modal-section { margin-bottom: 16px; }
+        .modal-close:hover { color: var(--foreground); }
+        .modal-title {
+            font-family: var(--font-serif);
+            font-size: 1.4rem;
+            font-weight: 400;
+            margin-bottom: 6px;
+            color: var(--foreground);
+            line-height: 1.2;
+        }
+        .modal-org {
+            font-size: 0.85rem;
+            color: var(--muted-foreground);
+            margin-bottom: 18px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .modal-section { margin-bottom: 18px; }
         .modal-section-title {
-            font-size: 0.8rem;
+            font-size: 0.65rem;
             font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--text-muted);
-            margin-bottom: 8px;
+            letter-spacing: 0.2em;
+            color: var(--muted-foreground);
+            margin-bottom: 10px;
+            font-family: var(--font-sans);
         }
-        .modal-fields .field-row { padding: 6px 0; }
+        .modal-fields .field-row { padding: 5px 0; }
         .modal-desc {
-            font-size: 0.9rem;
-            line-height: 1.6;
-            color: var(--text);
-            max-height: 300px;
-            overflow-y: auto;
+            font-size: 0.88rem;
+            line-height: 1.65;
+            color: var(--foreground);
+            opacity: 0.9;
         }
-        .modal-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+        .modal-actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
         .modal-actions a {
             padding: 10px 18px;
-            border-radius: 8px;
+            border-radius: var(--radius);
             text-decoration: none;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
         }
-        .modal-actions .btn-visit { background: var(--primary); color: #fff; }
-        .modal-actions .btn-map { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+        .modal-actions .btn-visit { background: var(--primary); color: var(--primary-foreground); }
+        .modal-actions .btn-map { background: var(--secondary); color: var(--foreground); border: 1px solid var(--border); }
         .field-row {
             display: flex;
             gap: 8px;
             padding: 4px 0;
-            font-size: 0.85rem;
+            font-size: 0.82rem;
         }
         .field-label {
-            color: var(--text-muted);
+            color: var(--muted-foreground);
             font-weight: 500;
             min-width: 70px;
-            font-size: 0.75rem;
+            font-size: 0.65rem;
             text-transform: uppercase;
-            letter-spacing: 0.03em;
-            padding-top: 1px;
+            letter-spacing: 0.08em;
+            padding-top: 2px;
+            font-family: var(--font-sans);
         }
-        .field-value { color: var(--text); flex: 1; word-break: break-word; }
+        .field-value { color: var(--foreground); flex: 1; word-break: break-word; }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 2px 8px;
+            border-radius: 1px;
+            font-size: 0.65rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-family: var(--font-sans);
+        }
+        .badge-online { background: rgba(212, 168, 75, 0.15); color: var(--accent); border: 1px solid rgba(212, 168, 75, 0.3); }
+        .badge-inperson { background: rgba(125, 168, 130, 0.15); color: var(--muted-foreground); border: 1px solid rgba(125, 168, 130, 0.3); }
         @media (max-width: 600px) {
-            .header h1 { font-size: 1.2rem; }
-            .calendar-day { min-height: 60px; }
+            .header h1 { font-size: 1.05rem; }
+            .calendar-day { min-height: 64px; }
             .calendar-event { font-size: 0.6rem; }
+            .controls { gap: 8px; }
+            .btn { padding: 0 10px; height: 36px; font-size: 11px; }
+            .search-wrap { height: 36px; }
         }
     </style>
 </head>
 <body>
     <div class="header">
         <div class="container">
-            <h1><i class="fas fa-calendar-alt"></i> Ecovillage Events</h1>
+            <div class="brand">
+                <div class="brand-icon"><i class="fas fa-tree"></i></div>
+                <h1>Ecovillage Events</h1>
+            </div>
             <div class="nav-links">
                 <a href="/"><i class="fas fa-map"></i> Map</a>
             </div>
@@ -295,16 +470,19 @@
     </div>
 
     <div class="controls">
-        <input type="text" class="search-input" id="searchInput" placeholder="Search events by title, description, organization, country...">
+        <div class="search-wrap">
+            <i class="fas fa-search"></i>
+            <input type="text" class="search-input" id="searchInput" placeholder="Search events, organizations, locations...">
+        </div>
         <button class="btn btn-primary" id="searchBtn"><i class="fas fa-search"></i> Search</button>
-        <button class="btn btn-secondary" id="clearBtn"><i class="fas fa-times"></i> Clear</button>
-        <select id="formatFilter" class="filter-select" style="padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:14px;cursor:pointer;">
+        <button class="btn btn-ghost" id="clearBtn"><i class="fas fa-times"></i> Clear</button>
+        <select id="formatFilter" class="filter-select">
             <option value="">All Events</option>
             <option value="remote">Remote Only</option>
             <option value="in_person">In Person Only</option>
         </select>
         <a class="btn btn-ics" href="/api/events.ics" target="_blank" rel="noopener">
-            <i class="fas fa-calendar-plus"></i> Subscribe / Download ICS
+            <i class="fas fa-calendar-plus"></i> Subscribe to Calendar
         </a>
     </div>
 
@@ -367,7 +545,7 @@
                 updateStats();
             } catch(e) {
                 console.error('calendar load error', e);
-                document.getElementById('calendarGrid').innerHTML = '<div style="grid-column:7;padding:40px;text-align:center;color:var(--text-muted);">Error loading calendar events</div>';
+                document.getElementById('calendarGrid').innerHTML = '<div style="grid-column:7;padding:40px;text-align:center;color:var(--muted-foreground);">Error loading calendar events</div>';
                 document.getElementById('calendarGrid').style.display = 'grid';
             } finally {
                 document.getElementById('calendarLoading').style.display = 'none';
@@ -455,21 +633,23 @@
             var eventUrl = item.event_url || item.registration_url || org.website || '#';
             var mapUrl = org.latitude && org.longitude ? '/?lat=' + org.latitude + '&lng=' + org.longitude + '&zoom=12' : '/';
 
+            var formatBadges = '';
+            if (item.is_online) formatBadges += '<span class="badge badge-online"><i class="fas fa-video"></i> Online</span>';
+            if (item.is_in_person) formatBadges += '<span class="badge badge-inperson"><i class="fas fa-users"></i> In Person</span>';
+
             var fields = fieldRow('Organization', org.name, 'fa-building');
             fields += fieldRow('Location', locationStr, 'fa-map-marker-alt');
             if (eventDate) fields += fieldRow('Start', eventDate, 'fa-calendar');
             if (endDate) fields += fieldRow('End', endDate, 'fa-calendar');
-            if (item.is_online) fields += fieldRow('Format', 'Online', 'fa-video');
-            if (item.is_in_person) fields += fieldRow('Format', 'In Person', 'fa-users');
             if (item.registration_url) fields += fieldRow('Join Link', item.registration_url, 'fa-link');
             if (item.event_url) fields += fieldRow('Event Page', item.event_url, 'fa-link');
             if (org.website) fields += fieldRow('Website', org.website, 'fa-globe');
 
-            var desc = item.description ? esc(item.description) : '<span style="color:var(--text-muted);font-style:italic;">No description available</span>';
+            var desc = item.description ? esc(item.description) : '<span style="color:var(--muted-foreground);font-style:italic;">No description available</span>';
 
             document.getElementById('modalBody').innerHTML =
                 '<button class="modal-close" onclick="closeModal()">&times;</button>' +
-                '<span class="card-type" style="display:inline-block;margin-bottom:8px;">Event</span>' +
+                (formatBadges ? '<div style="margin-bottom:10px;">' + formatBadges + '</div>' : '') +
                 '<h2 class="modal-title">' + esc(item.title || 'Untitled Event') + '</h2>' +
                 '<div class="modal-org"><i class="fas fa-building"></i> ' + esc(org.name || 'Unknown') + '</div>' +
                 '<div class="modal-section"><div class="modal-section-title">Details</div><div class="modal-fields">' + fields + '</div></div>' +
