@@ -206,37 +206,39 @@ function setupEventListeners() {
     // Check if we're on mobile
     const isMobile = window.innerWidth <= 768;
     
-    // On mobile, use a chevron icon instead of filter icon
+    // On mobile, use a chevron icon instead of filter icon and start expanded
     if (isMobile) {
-        toggleBtn.innerHTML = '<i class="fas fa-chevron-up"></i>';
+        toggleBtn.innerHTML = '<i class="fas fa-chevron-down"></i>';
+        mapControls.classList.add('expanded');
+        toggleBtn.classList.add('rotated');
     }
     
     toggleBtn.addEventListener('click', function(e) {
         e.stopPropagation();
         if (isMobile) {
-            // Mobile: toggle the drawer expand/collapse
+            // Mobile: toggle the drawer expand/collapse and content visibility
             mapControls.classList.toggle('expanded');
             toggleBtn.classList.toggle('rotated');
+            filterPanel.classList.toggle('active');
         } else {
             // Desktop: just toggle the filter panel visibility
             filterPanel.classList.toggle('active');
         }
     });
 
-    // On mobile, tapping the panel header also expands the drawer
+    // On mobile, tapping the panel header also expands/collapses the drawer
     if (isMobile) {
         document.querySelector('.panel-header').addEventListener('click', function(e) {
             // Don't toggle if they clicked the toggle button itself (already handled)
             if (e.target.closest('.toggle-btn')) return;
             mapControls.classList.toggle('expanded');
             toggleBtn.classList.toggle('rotated');
+            filterPanel.classList.toggle('active');
         });
     }
 
-    // On desktop, the panel content starts visible
-    if (!isMobile) {
-        filterPanel.classList.add('active');
-    }
+    // Panel content starts visible on all screen sizes
+    filterPanel.classList.add('active');
 
     // Reset button
     document.getElementById('resetBtn').addEventListener('click', resetAll);
