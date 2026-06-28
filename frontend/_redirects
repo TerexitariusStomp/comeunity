@@ -1,2 +1,6 @@
 # Cloudflare Pages redirects
+/events /events.html 200
+/events/ /events.html 200
+/privacy /privacy.html 200
+/privacy/ /privacy.html 200
 /* /index.html 200

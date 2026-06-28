@@ -12,7 +12,7 @@ let filters = {
 };
 let toggleBtn, filterPanel, mapControls; // for responsive drawer
 
-const MARKER_COLOR = '#007bff';
+const MARKER_COLOR = '#3b82f6';
 let searchScores = null; // Map<orgId, {rank, score, pct}> when search is active
 let searchResultIds = null; // Array of org IDs from current AI search
 
@@ -30,11 +30,28 @@ function scoreToColor(score, maxScore, rank, total) {
 document.addEventListener('DOMContentLoaded', function() {
     initMap();
     setupEventListeners();
-    loadOrganizations();
+    loadOrganizations().then(() => {
+        handleOrgQueryParam();
+    });
     updateStatistics();
     // Load embedding index and init WebLLM in background
     initSearch();
 });
+
+function handleOrgQueryParam() {
+    const params = new URLSearchParams(window.location.search);
+    const orgId = params.get('org');
+    if (!orgId) return;
+    const id = parseInt(orgId, 10);
+    if (!id || !allOrganizations.length) return;
+    const org = allOrganizations.find(o => o.id === id);
+    if (org) {
+        showOrganizationDetails(id);
+        if (org.latitude && org.longitude) {
+            map.setView([org.latitude, org.longitude], 12);
+        }
+    }
+}
 
 function setAIStatus(text, state) {
     const status = document.getElementById('aiStatus');
@@ -45,26 +62,26 @@ function setAIStatus(text, state) {
     status.style.display = 'block';
     statusText.textContent = text;
     if (state === 'loading') {
-        status.style.background = '#e3f2fd';
-        status.style.color = '#1565c0';
+        status.style.background = '#162a1e';
+        status.style.color = '#7da882';
         icon.className = 'fas fa-circle-notch fa-spin';
         icon.style.marginRight = '6px';
         bar.style.display = 'block';
     } else if (state === 'ready') {
-        status.style.background = '#e8f5e9';
-        status.style.color = '#2e7d32';
+        status.style.background = '#162a1e';
+        status.style.color = '#7da882';
         icon.className = 'fas fa-check-circle';
         icon.style.marginRight = '6px';
         bar.style.display = 'none';
     } else if (state === 'error') {
-        status.style.background = '#ffebee';
-        status.style.color = '#c62828';
+        status.style.background = '#162a1e';
+        status.style.color = '#d4183d';
         icon.className = 'fas fa-exclamation-circle';
         icon.style.marginRight = '6px';
         bar.style.display = 'none';
     } else if (state === 'searching') {
-        status.style.background = '#fff3e0';
-        status.style.color = '#e65100';
+        status.style.background = '#162a1e';
+        status.style.color = '#c97a3a';
         icon.className = 'fas fa-circle-notch fa-spin';
         icon.style.marginRight = '6px';
         bar.style.display = 'none';
@@ -339,6 +356,14 @@ async function loadOrganizations() {
                 popup: props.popup || '',
                 description: props.description || '',
                 website: props.website || '',
+                email: props.email || '',
+                phone: props.phone || '',
+                address: props.address || '',
+                city: props.city || '',
+                region: props.region || '',
+                postalCode: props.postalCode || '',
+                country: props.country || '',
+                organizationType: props.organizationType || '',
                 source: props.source,
                 latitude: feature.geometry.coordinates[1],
                 longitude: feature.geometry.coordinates[0],
@@ -348,7 +373,8 @@ async function loadOrganizations() {
                 accepts_longterm: props.acceptsLongterm,
                 has_jobs: props.hasJobs,
                 has_stays: props.hasStays,
-                has_events: props.hasEvents
+                has_events: props.hasEvents,
+                schemaOrg: props.schemaOrg || null
             };
         });
         window.allOrganizations = allOrganizations;
@@ -365,44 +391,79 @@ async function loadOrganizations() {
 }
 
 function buildPopupHtml(org) {
-    const body = org.popup || '<p>' + escapeHtml(org.name) + '</p>';
-    // Add match score badge when search is active
+    // Title (italic serif)
+    const title = `<h3 class="popup-title">${escapeHtml(org.name)}</h3>`;
+
+    // Short description (clamped)
+    let descHtml = '';
+    const desc = org.description || '';
+    if (desc && desc.length > 10) {
+        descHtml = `<div class="popup-desc">${escapeHtml(desc)}</div>`;
+    }
+
+    // Badges
+    let badgesHtml = '<div class="popup-badges">';
+    if (org.accepts_volunteers) {
+        badgesHtml += '<span class="popup-badge popup-badge-volunteer"><i class="fas fa-hands-helping"></i> Volunteer</span>';
+    }
+    if (org.has_jobs) {
+        badgesHtml += '<span class="popup-badge popup-badge-jobs"><i class="fas fa-briefcase"></i> Jobs</span>';
+    }
+    if (org.has_stays) {
+        badgesHtml += '<span class="popup-badge popup-badge-stays"><i class="fas fa-bed"></i> Stays</span>';
+    }
+    if (org.has_events) {
+        badgesHtml += '<span class="popup-badge popup-badge-events"><i class="fas fa-calendar-alt"></i> Events</span>';
+    }
+    badgesHtml += '</div>';
+    if (badgesHtml === '<div class="popup-badges"></div>') badgesHtml = '';
+
+    // Match score badge when search is active
     let scoreBadge = '';
     const scoreInfo = searchScores && searchScores[org.id];
     if (scoreInfo) {
-        scoreBadge = `<div style="font-size:11px;color:#666;margin:2px 0;">
-            <span style="display:inline-block;background:${scoreToColor(scoreInfo.score, 1, scoreInfo.rank, scoreInfo.total)};color:white;padding:1px 8px;border-radius:10px;font-weight:600;">#${scoreInfo.rank} · ${scoreInfo.pct}% match</span>
+        scoreBadge = `<div class="popup-score">
+            <span style="background:${scoreToColor(scoreInfo.score, 1, scoreInfo.rank, scoreInfo.total)};">#${scoreInfo.rank} · ${scoreInfo.pct}% match</span>
         </div>`;
     }
-    // Job/stay indicators
-    let listingBadges = '';
-    if (org.has_jobs) listingBadges += '<span style="display:inline-block;background:#dc3545;color:white;padding:1px 6px;border-radius:3px;margin:2px 2px 2px 0;font-size:11px;">💼 Jobs</span> ';
-    if (org.has_stays) listingBadges += '<span style="display:inline-block;background:#17a2b8;color:white;padding:1px 6px;border-radius:3px;margin:2px 2px 2px 0;font-size:11px;">🏠 Stays</span> ';
-    if (listingBadges) listingBadges = '<div style="margin:4px 0;">' + listingBadges + '</div>';
+
+    // Location + website link
+    const locationHtml = '<div class="popup-location"><i class="fas fa-map-marker-alt"></i> ' +
+        (org.latitude && org.longitude ? `${org.latitude.toFixed(4)}, ${org.longitude.toFixed(4)}` : 'Global map') + '</div>';
+
+    let websiteLink = '';
+    if (org.website) {
+        websiteLink = `<a href="${escapeHtml(org.website)}" target="_blank" style="color:#7da882;text-decoration:none;"><i class="fas fa-globe"></i> Website</a>`;
+    }
 
     // Data source label
     const sourceLabel = getSourceLabel(org.source);
     const sourceHtml = sourceLabel
-        ? `<div style="font-size:10px;color:#999;margin-top:2px;border-top:1px solid #eee;padding-top:2px;">${sourceLabel}</div>`
+        ? `<div class="popup-meta">${sourceLabel}</div>`
         : '';
+
     return '<div class="org-popup">' +
         scoreBadge +
-        body +
-        listingBadges +
+        title +
+        descHtml +
+        badgesHtml +
+        locationHtml +
+        (websiteLink ? `<div class="popup-meta">${websiteLink}</div>` : '') +
         sourceHtml +
-        '<br><div class="org-actions"><button class="btn view-details-btn" data-org-id="' + org.id + '">View Details</button></div>' +
+        '<div class="popup-actions"><button class="btn view-details-btn" data-org-id="' + org.id + '">View Details <i class="fas fa-arrow-right"></i></button></div>' +
         '</div>';
 }
 
 function getSourceLabel(source) {
     if (!source) return '';
     const s = source.toLowerCase();
-    if (s === 'ecovillage') return 'Listed on <a href="https://ecovillage.org" target="_blank" style="color:#666;">ecovillage.org</a> (GEN)';
-    if (s === 'ic-directory') return 'Listed on <a href="https://ic.org" target="_blank" style="color:#666;">ic.org</a> (FIC)';
-    if (s === 'ecobasa') return 'Listed on <a href="https://ecobasa.org" target="_blank" style="color:#666;">ecobasa.org</a>';
-    if (s === 'agartha') return 'Listed on <a href="https://agartha.one" target="_blank" style="color:#666;">agartha.one</a>';
-    if (s === 'tribes') return 'Listed on <a href="https://ic.org" target="_blank" style="color:#666;">ic.org</a>';
-    if (s === 'facebook') return 'Found on <a href="https://facebook.com" target="_blank" style="color:#666;">Facebook</a>';
+    const linkStyle = 'style="color:#7da882;text-decoration:none;"';
+    if (s === 'ecovillage') return 'Listed on <a href="https://ecovillage.org" target="_blank" ' + linkStyle + '>ecovillage.org</a> (GEN)';
+    if (s === 'ic-directory') return 'Listed on <a href="https://ic.org" target="_blank" ' + linkStyle + '>ic.org</a> (FIC)';
+    if (s === 'ecobasa') return 'Listed on <a href="https://ecobasa.org" target="_blank" ' + linkStyle + '>ecobasa.org</a>';
+    if (s === 'agartha') return 'Listed on <a href="https://agartha.one" target="_blank" ' + linkStyle + '>agartha.one</a>';
+    if (s === 'tribes') return 'Listed on <a href="https://ic.org" target="_blank" ' + linkStyle + '>ic.org</a>';
+    if (s === 'facebook') return 'Found on <a href="https://facebook.com" target="_blank" ' + linkStyle + '>Facebook</a>';
     return 'Source: ' + escapeHtml(source);
 }
 
@@ -415,17 +476,23 @@ function createMarkers(orgs) {
             ? scoreToColor(searchScores[org.id].score, 1, searchScores[org.id].rank, searchScores[org.id].total)
             : MARKER_COLOR;
 
+        const markerSvg =
+            '<svg width="28" height="36" viewBox="0 0 28 36" class="marker-svg">' +
+            '<path d="M14 0C6.3 0 0 6.3 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.3 21.7 0 14 0z" fill="' + color + '" stroke="rgba(255,255,255,0.9)" stroke-width="2"/>' +
+            '<circle cx="14" cy="14" r="4.5" fill="rgba(255,255,255,0.9)"/>' +
+            '</svg>';
+
         const icon = L.divIcon({
             className: 'custom-marker',
-            html: '<i class="fas fa-map-marker-alt" style="color:' + color + '; font-size: 18px;"></i>',
-            iconSize: [18, 18],
-            iconAnchor: [9, 18]
+            html: markerSvg,
+            iconSize: [28, 36],
+            iconAnchor: [14, 36]
         });
 
         const marker = L.marker([org.latitude, org.longitude], { icon: icon }).addTo(map);
 
         const popupContent = buildPopupHtml(org);
-        marker.bindPopup(popupContent);
+        marker.bindPopup(popupContent, { autoPan: false, closeButton: true, className: 'te-popup' });
         marker.on('click', function() {
             setTimeout(() => {
                 const popupEl = marker.getPopup().getElement();
@@ -435,7 +502,7 @@ function createMarkers(orgs) {
                         detailsBtn.addEventListener('click', () => showOrganizationDetails(org.id));
                     }
                 }
-            }, 100);
+            }, 30);
         });
         markers.push(marker);
     });
@@ -443,12 +510,14 @@ function createMarkers(orgs) {
 
 function buildBadges(org) {
     let html = '';
-    if (org.accepts_volunteers) html += '<span style="background:#ffc107;color:black;padding:1px 5px;border-radius:3px;margin:1px;font-size:11px;">Volunteer</span> ';
+    if (org.accepts_volunteers) html += '<span class="org-badge org-badge-volunteer"><i class="fas fa-hands-helping"></i> Volunteer</span> ';
     if (org.accepts_visitors) {
-        if (org.accepts_shortterm) html += '<span style="background:#17a2b8;color:white;padding:1px 5px;border-radius:3px;margin:1px;font-size:11px;">Short-term</span> ';
-        if (org.accepts_longterm) html += '<span style="background:#17a2b8;color:white;padding:1px 5px;border-radius:3px;margin:1px;font-size:11px;">Long-term</span> ';
+        if (org.accepts_shortterm) html += '<span class="org-badge org-badge-stays"><i class="fas fa-clock"></i> Short-term</span> ';
+        if (org.accepts_longterm) html += '<span class="org-badge org-badge-stays"><i class="fas fa-calendar-check"></i> Long-term</span> ';
     }
-    if (org.has_jobs) html += '<span style="background:#dc3545;color:white;padding:1px 5px;border-radius:3px;margin:1px;font-size:11px;">Jobs</span>';
+    if (org.has_jobs) html += '<span class="org-badge org-badge-jobs"><i class="fas fa-briefcase"></i> Jobs</span> ';
+    if (org.has_stays) html += '<span class="org-badge org-badge-stays"><i class="fas fa-bed"></i> Stays</span> ';
+    if (org.has_events) html += '<span class="org-badge org-badge-events"><i class="fas fa-calendar-alt"></i> Events</span> ';
     return html;
 }
 
@@ -479,16 +548,22 @@ function updateMarkers() {
             ? scoreToColor(searchScores[org.id].score, 1, searchScores[org.id].rank, searchScores[org.id].total)
             : MARKER_COLOR;
 
+        const markerSvg =
+            '<svg width="28" height="36" viewBox="0 0 28 36" class="marker-svg">' +
+            '<path d="M14 0C6.3 0 0 6.3 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.3 21.7 0 14 0z" fill="' + color + '" stroke="rgba(255,255,255,0.9)" stroke-width="2"/>' +
+            '<circle cx="14" cy="14" r="4.5" fill="rgba(255,255,255,0.9)"/>' +
+            '</svg>';
+
         const icon = L.divIcon({
             className: 'custom-marker',
-            html: '<i class="fas fa-map-marker-alt" style="color:' + color + '; font-size: 18px;"></i>',
-            iconSize: [18, 18],
-            iconAnchor: [9, 18]
+            html: markerSvg,
+            iconSize: [28, 36],
+            iconAnchor: [14, 36]
         });
 
         const marker = L.marker([org.latitude, org.longitude], { icon: icon }).addTo(map);
         const popupContent = buildPopupHtml(org);
-        marker.bindPopup(popupContent);
+        marker.bindPopup(popupContent, { autoPan: false, closeButton: true, className: 'te-popup' });
         marker.on('click', function() {
             setTimeout(() => {
                 const popupEl = marker.getPopup().getElement();
@@ -498,7 +573,7 @@ function updateMarkers() {
                         detailsBtn.addEventListener('click', () => showOrganizationDetails(org.id));
                     }
                 }
-            }, 100);
+            }, 30);
         });
         markers.push(marker);
     });
@@ -508,10 +583,10 @@ function updateMarkers() {
 async function showOrganizationDetails(orgId) {
     const org = allOrganizations.find(o => o.id === orgId);
     if (!org) return;
-    
+
     const modalBody = document.querySelector('.modal-body');
     const badgeHtml = buildBadges(org);
-    
+
     let descHtml = '';
     const desc = org.description || '';
     if (desc && desc.length > 10) {
@@ -520,27 +595,27 @@ async function showOrganizationDetails(orgId) {
             escapeHtml(desc) +
             '</div></div>';
     }
-    
+
     let linksHtml = '';
     if (org.website) {
-        linksHtml = '<a href="' + escapeHtml(org.website) + '" target="_blank" style="margin-right:12px;"><i class="fas fa-globe"></i> Website</a>';
+        linksHtml = '<a href="' + escapeHtml(org.website) + '" target="_blank"><i class="fas fa-globe"></i> Website</a>';
     }
     if (org.email) {
-        linksHtml += '<a href="mailto:' + escapeHtml(org.email) + '" style="margin-right:12px;"><i class="fas fa-envelope"></i> Email</a>';
+        linksHtml += '<a href="mailto:' + escapeHtml(org.email) + '"><i class="fas fa-envelope"></i> Email</a>';
     }
     if (org.phone) {
-        linksHtml += '<span><i class="fas fa-phone"></i> ' + escapeHtml(org.phone) + '</span>';
+        linksHtml += '<span style="color:#7da882;font-size:13px;"><i class="fas fa-phone"></i> ' + escapeHtml(org.phone) + '</span>';
     }
-    
+
     const sourceLabel = getSourceLabel(org.source);
     const sourceSection = sourceLabel
-        ? '<div class="org-section"><h4><i class="fas fa-database"></i> Data Source</h4><div style="font-size:13px;color:#666;">' + sourceLabel + '</div></div>'
+        ? '<div class="org-section"><h4><i class="fas fa-database"></i> Data Source</h4><div style="font-size:13px;color:#7da882;">' + sourceLabel + '</div></div>'
         : '';
-    
-    modalBody.innerHTML = 
+
+    modalBody.innerHTML =
         '<div class="org-details">' +
-        '<h2 style="margin:0 0 4px;font-size:20px;">' + escapeHtml(org.name) + '</h2>' +
-        '<div style="margin-bottom:12px;">' + badgeHtml + '</div>' +
+        '<h2>' + escapeHtml(org.name) + '</h2>' +
+        '<div style="margin-bottom:14px;">' + badgeHtml + '</div>' +
         descHtml +
         '<div class="org-section"><h4><i class="fas fa-map-marked-alt"></i> Location</h4><p>Lat: ' + org.latitude.toFixed(4) + ', Lon: ' + org.longitude.toFixed(4) + '</p></div>' +
         (linksHtml ? '<div class="org-section"><h4><i class="fas fa-link"></i> Links</h4><div>' + linksHtml + '</div></div>' : '') +
@@ -548,17 +623,23 @@ async function showOrganizationDetails(orgId) {
         '<div id="staysSection"></div>' +
         sourceSection +
         '</div>';
-    
+
     document.getElementById('orgDetailsModal').classList.add('active');
-    
+
+    // Update browser title and inject JSON-LD for this community
+    if (org.schemaOrg) {
+        document.title = `${org.name} — ComeUnity`;
+        injectOrgJsonLd(org.schemaOrg);
+    }
+
     // Fetch jobs and stays in parallel
     var jobsPromise = fetch('/api/organizations/' + orgId + '/jobs').then(function(r) { return r.json(); }).catch(function() { return []; });
     var staysPromise = fetch('/api/organizations/' + orgId + '/stays').then(function(r) { return r.json(); }).catch(function() { return []; });
-    
+
     var results = await Promise.all([jobsPromise, staysPromise]);
     var jobs = results[0];
     var stays = results[1];
-    
+
     // Render jobs
     var jobsEl = document.getElementById('jobsSection');
     if (jobs && jobs.length > 0) {
@@ -567,18 +648,18 @@ async function showOrganizationDetails(orgId) {
         jobs.forEach(function(job) {
             var roleLabel = roleLabels[job.role] || job.role || 'Position';
             var title = escapeHtml(job.title || 'Untitled');
-            var jd = job.description ? '<div style="font-size:13px;color:#555;margin:4px 0;line-height:1.4;">' + escapeHtml(job.description.substring(0, 200)) + (job.description.length > 200 ? '...' : '') + '</div>' : '';
-            var cm = job.commitment ? '<span style="font-size:11px;color:#888;margin-right:8px;"><i class="fas fa-clock"></i> ' + escapeHtml(job.commitment) + '</span>' : '';
-            var al = job.source_url ? '<a href="' + escapeHtml(job.source_url) + '" target="_blank" style="font-size:12px;color:#dc3545;text-decoration:none;">Apply &rarr;</a>' : '';
-            jh += '<div style="border:1px solid #eee;border-radius:6px;padding:10px;margin:6px 0;">' +
-                '<div style="font-weight:600;font-size:14px;">' + title + '</div>' +
-                '<div style="font-size:11px;color:#888;margin:2px 0;">' + escapeHtml(roleLabel) + '</div>' +
-                jd + '<div style="margin-top:4px;">' + cm + al + '</div></div>';
+            var jd = job.description ? '<div class="card-text">' + escapeHtml(job.description.substring(0, 200)) + (job.description.length > 200 ? '...' : '') + '</div>' : '';
+            var cm = job.commitment ? '<span class="card-meta"><i class="fas fa-clock"></i> ' + escapeHtml(job.commitment) + '</span>' : '';
+            var al = job.source_url ? '<a href="' + escapeHtml(job.source_url) + '" target="_blank" class="card-action">Apply <i class="fas fa-arrow-right"></i></a>' : '';
+            jh += '<div class="detail-card">' +
+                '<div class="detail-card-title">' + title + '</div>' +
+                '<div class="detail-card-subtitle">' + escapeHtml(roleLabel) + '</div>' +
+                jd + '<div style="margin-top:6px;">' + cm + al + '</div></div>';
         });
         jh += '</div>';
         jobsEl.innerHTML = jh;
     }
-    
+
     // Render stays
     var staysEl = document.getElementById('staysSection');
     if (stays && stays.length > 0) {
@@ -586,14 +667,14 @@ async function showOrganizationDetails(orgId) {
         var sh = '<div class="org-section"><h4><i class="fas fa-home"></i> Stays Available (' + stays.length + ')</h4>';
         stays.forEach(function(stay) {
             var title = escapeHtml(stay.title || 'Stay');
-            var sd = stay.description ? '<div style="font-size:13px;color:#555;margin:4px 0;line-height:1.4;">' + escapeHtml(stay.description.substring(0, 200)) + (stay.description.length > 200 ? '...' : '') + '</div>' : '';
-            var pr = stay.price_info ? '<span style="font-size:11px;color:#888;margin-right:8px;"><i class="fas fa-tag"></i> ' + escapeHtml(stay.price_info) + '</span>' : '';
+            var sd = stay.description ? '<div class="card-text">' + escapeHtml(stay.description.substring(0, 200)) + (stay.description.length > 200 ? '...' : '') + '</div>' : '';
+            var pr = stay.price_info ? '<span class="card-meta"><i class="fas fa-tag"></i> ' + escapeHtml(stay.price_info) + '</span>' : '';
             var bl = bookingLabels[stay.booking_type] || 'Contact Directly';
-            var bk = stay.booking_url ? '<a href="' + escapeHtml(stay.booking_url) + '" target="_blank" style="font-size:12px;color:#17a2b8;text-decoration:none;">Book &rarr;</a>' : '';
-            sh += '<div style="border:1px solid #eee;border-radius:6px;padding:10px;margin:6px 0;">' +
-                '<div style="font-weight:600;font-size:14px;">' + title + '</div>' +
-                '<div style="font-size:11px;color:#888;margin:2px 0;">' + escapeHtml(bl) + '</div>' +
-                sd + '<div style="margin-top:4px;">' + pr + bk + '</div></div>';
+            var bk = stay.booking_url ? '<a href="' + escapeHtml(stay.booking_url) + '" target="_blank" class="card-action">Book <i class="fas fa-arrow-right"></i></a>' : '';
+            sh += '<div class="detail-card">' +
+                '<div class="detail-card-title">' + title + '</div>' +
+                '<div class="detail-card-subtitle">' + escapeHtml(bl) + '</div>' +
+                sd + '<div style="margin-top:6px;">' + pr + bk + '</div></div>';
         });
         sh += '</div>';
         staysEl.innerHTML = sh;
@@ -611,6 +692,20 @@ function showLoading(show) {
 
 function closeModal() {
     document.getElementById('orgDetailsModal').classList.remove('active');
+    document.title = 'ComeUnity';
+    const ld = document.getElementById('org-jsonld');
+    if (ld) ld.remove();
+}
+
+function injectOrgJsonLd(schema) {
+    let ld = document.getElementById('org-jsonld');
+    if (!ld) {
+        ld = document.createElement('script');
+        ld.id = 'org-jsonld';
+        ld.type = 'application/ld+json';
+        document.head.appendChild(ld);
+    }
+    ld.textContent = JSON.stringify(schema, null, 2);
 }
 
 function closeSubmitModal() {

@@ -3,28 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Global Ecovillage Map — Find Intentional Communities, Eco-Villages & Volunteering</title>
+    <title>ComeUnity</title>
     <meta name="description" content="Discover 7,000+ ecovillages and intentional communities worldwide. Find places accepting volunteers, visitors, and residents. Permaculture, organic farming, sustainable living.">
     <meta name="keywords" content="ecovillage map, intentional communities, eco villages, permaculture, sustainable living, volunteer opportunities, community living, organic farming, off-grid, homesteading">
     <meta name="robots" content="index, follow">
-    <meta name="theme-color" content="#667eea">
+    <meta name="theme-color" content="#0b1c10">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-title" content="Ecovillage Map">
-    
+    <meta name="apple-mobile-web-app-title" content="ComeUnity">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="img/comeunity-logo-v2.png">
+    <link rel="apple-touch-icon" href="img/comeunity-logo-v2.png">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Serif+Display:ital@0;1&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+
     <!-- Canonical -->
     <link rel="canonical" href="https://volunteer.templeearth.cc/">
     
     <!-- Open Graph -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://volunteer.templeearth.cc/">
-    <meta property="og:title" content="Global Ecovillage Map — Find Intentional Communities Worldwide">
+    <meta property="og:title" content="ComeUnity">
     <meta property="og:description" content="Discover 7,000+ ecovillages and intentional communities. Volunteer, visit, or find your next home. Permaculture, organic farming, sustainable living.">
-    <meta property="og:site_name" content="Global Ecovillage Map">
+    <meta property="og:site_name" content="ComeUnity">
     <meta property="og:locale" content="en_US">
     
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Global Ecovillage Map — Find Intentional Communities">
+    <meta name="twitter:title" content="ComeUnity">
     <meta name="twitter:description" content="Discover 7,000+ ecovillages worldwide. Permaculture, volunteering, sustainable living.">
     
     <!-- Hreflang -->
@@ -39,14 +48,14 @@
     <!-- Styles -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=19">
     
     <!-- JSON-LD Structured Data -->
     <script type="application/ld+json">
     {
         "@context": "https://schema.org",
         "@type": "WebApplication",
-        "name": "Global Ecovillage Map",
+        "name": "ComeUnity",
         "url": "https://volunteer.templeearth.cc/",
         "description": "Interactive map of 7,000+ ecovillages and intentional communities worldwide. Filter by volunteer opportunities, short/long-term stays, and jobs.",
         "applicationCategory": "TravelApplication",
@@ -64,14 +73,14 @@
     <div id="map"></div>
     
     <!-- Floating Events button (top-right, outside the menu) -->
-    <a href="/events/" style="position:fixed;top:20px;right:20px;z-index:1000;display:inline-flex;align-items:center;gap:6px;padding:10px 16px;background:linear-gradient(135deg,#f093fb,#f5576c);color:#fff;border-radius:10px;text-decoration:none;font-size:14px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.15);transition:transform 0.2s;">
-        <i class="fas fa-calendar-alt"></i> Events
+    <a href="/events/" style="position:fixed;top:20px;right:20px;z-index:1000;display:inline-flex;align-items:center;gap:6px;padding:10px 16px;background:rgba(11,28,16,0.88);border:1px solid rgba(120,170,120,0.25);color:#e8d9b8;border-radius:2px;text-decoration:none;font-size:13px;font-weight:500;box-shadow:0 4px 16px rgba(0,0,0,0.25);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:all 0.2s;">
+        <i class="fas fa-calendar-alt" style="color:#d4a84b;"></i> Events
     </a>
     
     <div class="map-controls">
         <div class="control-panel">
             <div class="panel-header">
-                <h3><i class="fas fa-globe-americas"></i> Ecovillage Map</h3>
+                <h3><img src="img/comeunity-logo-v2.png" alt="ComeUnity logo" class="header-logo"> ComeUnity Map</h3>
                 <button class="toggle-btn" id="filterToggle"><i class="fas fa-filter"></i></button>
             </div>
             
@@ -86,35 +95,35 @@
 
                 <!-- AI Search -->
                 <div class="filter-group">
-                    <label style="font-weight:600;margin-bottom:8px;display:block;">
-                        <i class="fas fa-robot"></i> AI Search — describe what you want
+                    <label style="font-weight:600;margin-bottom:8px;display:block;color:#e8d9b8;text-shadow:0 1px 2px rgba(0,0,0,0.4);">
+                        <i class="fas fa-robot" style="color:#d4a84b;"></i> AI Search — describe what you want
                     </label>
-                    <textarea id="semanticQuery" rows="3" placeholder="Describe what you're looking for... e.g., 'I'm a permaculture designer seeking a community that accepts volunteers for 3-6 months, with organic farming and natural building. Or mention a location: permaculture in Brazil, eco village in Europe'." style="width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:4px;font-size:14px;resize:vertical;margin-bottom:8px;"></textarea>
-                    
+                    <textarea id="semanticQuery" class="semantic-input" rows="3" placeholder="Describe what you're looking for... e.g., 'I'm a permaculture designer seeking a community that accepts volunteers for 3-6 months, with organic farming and natural building. Or mention a location: permaculture in Brazil, eco village in Europe'."></textarea>
+
                     <button id="semanticSearchBtn" class="btn btn-semantic">
                         <i class="fas fa-search"></i> Find Matching Locations
                     </button>
 
                     <!-- AI Search Status -->
-                    <div id="aiStatus" style="margin-top:8px;padding:8px 10px;border-radius:6px;font-size:12px;text-align:center;display:none;">
-                        <span id="aiStatusIcon" class="fas fa-circle-notch fa-spin" style="margin-right:6px;"></span>
+                    <div id="aiStatus" style="margin-top:8px;padding:8px 10px;border-radius:2px;font-size:12px;text-align:center;display:none;background:#162a1e;color:#7da882;border:1px solid rgba(120,170,120,0.15);">
+                        <span id="aiStatusIcon" class="fas fa-circle-notch fa-spin" style="margin-right:6px;color:#c97a3a;"></span>
                         <span id="aiStatusText">Loading AI model...</span>
                     </div>
 
                     <!-- Progress bar -->
-                    <div id="aiProgressBar" style="margin-top:4px;height:4px;background:#e0e0e0;border-radius:2px;overflow:hidden;display:none;">
-                        <div id="aiProgressFill" style="height:100%;width:0%;background:linear-gradient(90deg,#f5576c,#f093fb);transition:width 0.3s;"></div>
+                    <div id="aiProgressBar" style="margin-top:4px;height:4px;background:#162a1e;border-radius:2px;overflow:hidden;display:none;">
+                        <div id="aiProgressFill" style="height:100%;width:0%;background:#c97a3a;transition:width 0.3s;"></div>
                     </div>
 
                     <!-- Result count toast (shows briefly then auto-hides) -->
-                    <div id="semanticToast" style="display:none;margin-top:8px;padding:6px 10px;border-radius:4px;background:#e8f5e9;color:#2e7d32;font-size:13px;text-align:center;"></div>
+                    <div id="semanticToast" style="display:none;margin-top:8px;padding:6px 10px;border-radius:2px;background:#162a1e;color:#7da882;font-size:13px;text-align:center;border:1px solid rgba(120,170,120,0.2);"></div>
                 </div>
-                <div style="margin-top:8px;padding-top:8px;border-top:1px solid #eee;text-align:center;">
-                    <a id="submitLink" href="#" style="font-size:12px;color:#888;text-decoration:none;" title="Add an ecovillage not yet on the map">
+                <div class="panel-footer" style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(120,170,120,0.18);text-align:center;">
+                    <a id="submitLink" href="#" style="font-size:12px;color:#7da882;text-decoration:none;" title="Add an ecovillage not yet on the map">
                         <i class="fas fa-plus-circle"></i> Submit an Ecovillage
                     </a>
                     &nbsp;&middot;&nbsp;
-                    <a href="https://github.com/TerexitariusStomp/volunteer-map" target="_blank" style="font-size:14px;color:#888;text-decoration:none;" title="View source on GitHub">
+                    <a href="https://github.com/TerexitariusStomp/volunteer-map" target="_blank" style="font-size:14px;color:#7da882;text-decoration:none;" title="View source on GitHub">
                         <i class="fab fa-github"></i>
                     </a>
                 </div>
@@ -130,7 +139,7 @@
                 <span class="stat-label">Showing</span>
                 <span class="stat-value" id="visibleCount">0</span>
             </div>
-            <button id="resetBtn" class="btn btn-reset" title="Reset to all data" style="display:none;padding:4px 10px;font-size:12px;border:1px solid #ccc;border-radius:4px;background:#f8f9fa;cursor:pointer;white-space:nowrap;">
+            <button id="resetBtn" class="btn btn-reset" title="Reset to all data" style="display:none;">
                 <i class="fas fa-undo"></i> Reset
             </button>
         </div>
@@ -147,35 +156,35 @@
     <div id="submitModal" class="modal">
         <div class="modal-content" style="max-width:560px;">
             <span class="close-submit close-modal">&times;</span>
-            <h3 style="margin:0 0 16px;"><i class="fas fa-plus-circle"></i> Submit an Ecovillage</h3>
+            <h3 style="margin:0 0 18px;font-family:'DM Serif Display',serif;font-weight:400;font-size:22px;color:#e8d9b8;"><i class="fas fa-plus-circle" style="color:#d4a84b;"></i> Submit a Community</h3>
             <form id="submitForm" style="display:flex;flex-direction:column;gap:10px;">
-                <input type="text" id="subName" placeholder="Community name *" required style="padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
-                <textarea id="subDesc" rows="4" placeholder="Description — what is the community about? (min 20 chars) *" required style="padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;resize:vertical;"></textarea>
-                <input type="text" id="subType" placeholder="Organization type (e.g. Permaculture, Eco-village, Cohousing, Farming)" style="padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
+                <input type="text" id="subName" placeholder="Community name *" required class="te-input">
+                <textarea id="subDesc" rows="4" placeholder="Description — what is the community about? (min 20 chars) *" required class="te-input"></textarea>
+                <input type="text" id="subType" placeholder="Organization type (e.g. Permaculture, Eco-village, Cohousing, Farming)" class="te-input">
                 <div style="display:flex;gap:8px;">
-                    <input type="text" id="subWebsite" placeholder="Website URL (e.g. https://example.com)" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
-                    <input type="email" id="subEmail" placeholder="Contact email" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
-                </div>
-                <div style="display:flex;gap:8px;">
-                    <input type="text" id="subPhone" placeholder="Phone (optional)" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
-                    <input type="text" id="subAddress" placeholder="Street address (optional)" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
+                    <input type="text" id="subWebsite" placeholder="Website URL (e.g. https://example.com)" class="te-input" style="flex:1;">
+                    <input type="email" id="subEmail" placeholder="Contact email" class="te-input" style="flex:1;">
                 </div>
                 <div style="display:flex;gap:8px;">
-                    <input type="text" id="subCity" placeholder="City (optional)" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
-                    <input type="text" id="subRegion" placeholder="State/Region (optional)" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
+                    <input type="text" id="subPhone" placeholder="Phone (optional)" class="te-input" style="flex:1;">
+                    <input type="text" id="subAddress" placeholder="Street address (optional)" class="te-input" style="flex:1;">
                 </div>
                 <div style="display:flex;gap:8px;">
-                    <input type="text" id="subCountry" placeholder="Country *" required style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
-                    <input type="text" id="subPostal" placeholder="Postal code (optional)" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
+                    <input type="text" id="subCity" placeholder="City (optional)" class="te-input" style="flex:1;">
+                    <input type="text" id="subRegion" placeholder="State/Region (optional)" class="te-input" style="flex:1;">
                 </div>
                 <div style="display:flex;gap:8px;">
-                    <input type="number" id="subLat" placeholder="Latitude *" step="any" required style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
-                    <input type="number" id="subLng" placeholder="Longitude *" step="any" required style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;">
+                    <input type="text" id="subCountry" placeholder="Country *" required class="te-input" style="flex:1;">
+                    <input type="text" id="subPostal" placeholder="Postal code (optional)" class="te-input" style="flex:1;">
                 </div>
-                <div style="font-size:11px;color:#888;padding:4px 0;">
-                    <i class="fas fa-info-circle"></i> Tip: right-click on Google Maps and select the coordinates, or use <a href="https://www.latlong.net/" target="_blank" style="color:#667eea;">latlong.net</a>
+                <div style="display:flex;gap:8px;">
+                    <input type="number" id="subLat" placeholder="Latitude *" step="any" required class="te-input" style="flex:1;">
+                    <input type="number" id="subLng" placeholder="Longitude *" step="any" required class="te-input" style="flex:1;">
                 </div>
-                <div style="display:flex;flex-wrap:wrap;gap:10px;font-size:13px;padding:4px 0;border-top:1px solid #eee;border-bottom:1px solid #eee;">
+                <div style="font-size:11px;color:#7da882;padding:4px 0;">
+                    <i class="fas fa-info-circle"></i> Tip: right-click on Google Maps and select the coordinates, or use <a href="https://www.latlong.net/" target="_blank" style="color:#c97a3a;text-decoration:none;">latlong.net</a>
+                </div>
+                <div class="submit-checkboxes">
                     <label><input type="checkbox" id="subVolunteers"> Accepts Volunteers</label>
                     <label><input type="checkbox" id="subVisitors"> Accepts Visitors</label>
                     <label><input type="checkbox" id="subShortterm"> Short-term Stays</label>
@@ -183,9 +192,9 @@
                     <label><input type="checkbox" id="subJobs"> Has Jobs</label>
                     <label><input type="checkbox" id="subEvents"> Has Events</label>
                 </div>
-                <div id="submitError" style="color:#c62828;font-size:13px;display:none;"></div>
-                <div id="submitSuccess" style="color:#2e7d32;font-size:13px;display:none;"></div>
-                <button type="submit" id="submitBtn" style="padding:10px;background:#007bff;color:white;border:none;border-radius:4px;font-size:15px;cursor:pointer;">
+                <div id="submitError" style="color:#d4183d;font-size:13px;display:none;"></div>
+                <div id="submitSuccess" style="color:#7da882;font-size:13px;display:none;"></div>
+                <button type="submit" id="submitBtn" class="btn btn-primary">
                     <i class="fas fa-paper-plane"></i> Submit for Review
                 </button>
             </form>
@@ -194,13 +203,13 @@
     
     <div id="loadingIndicator" class="loading" style="display: none;">
         <div class="spinner"></div>
-        <span>Loading ecovillages...</span>
+        <span>Loading communities...</span>
     </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
-    <script type="module" src="js/search.js?v=34"></script>
-    <script type="module" src="js/app.js?v=36"></script>
+    <script type="module" src="js/search.js?v=40"></script>
+    <script type="module" src="js/app.js?v=42"></script>
     
     <!-- Google Translate - auto-detect browser language -->
     <div id="translateContainer" style="display:none;"></div>
@@ -214,10 +223,10 @@
             if (lang !== 'en' && supportedLangs.includes(lang)) {
                 var bar = document.createElement('div');
                 bar.id = 'langBar';
-                bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#667eea;color:white;text-align:center;padding:6px 16px;font-size:13px;font-family:sans-serif;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;';
+                bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#0b1c10;color:#e8d9b8;text-align:center;padding:6px 16px;font-size:13px;font-family:Outfit,sans-serif;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;border-bottom:1px solid rgba(120,170,120,0.2);';
                 bar.innerHTML = '🌐 This page is available in English. ' +
-                    '<a href="https://translate.google.com/translate?hl=' + lang + '&sl=en&tl=' + lang + '&u=' + encodeURIComponent(window.location.href) + '" target="_blank" style="color:#fff;font-weight:600;text-decoration:underline;">Translate to ' + lang.toUpperCase() + '</a>' +
-                    ' <button onclick="this.parentElement.style.display=\'none\'" style="background:none;border:1px solid rgba(255,255,255,0.5);color:white;border-radius:4px;padding:2px 10px;cursor:pointer;font-size:12px;margin-left:4px;">X</button>';
+                    '<a href="https://translate.google.com/translate?hl=' + lang + '&sl=en&tl=' + lang + '&u=' + encodeURIComponent(window.location.href) + '" target="_blank" style="color:#d4a84b;font-weight:600;text-decoration:underline;">Translate to ' + lang.toUpperCase() + '</a>' +
+                    ' <button onclick="this.parentElement.style.display=\'none\'" style="background:none;border:1px solid rgba(120,170,120,0.4);color:#7da882;border-radius:2px;padding:2px 10px;cursor:pointer;font-size:12px;margin-left:4px;">X</button>';
                 document.body.prepend(bar);
                 // Shift the map controls down by the bar height
                 var style = document.createElement('style');
@@ -228,6 +237,6 @@
     </script>
     <!-- End translate -->
 
-<p><a href="/ecovillage-locations/">Volunteer EcoVillage Locations map</a></p>
+<p><a href="/ecovillage-locations/">Volunteer Community Locations map</a></p>
 </body>
 </html>

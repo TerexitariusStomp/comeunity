@@ -137,7 +137,14 @@ export async function onRequestGet({ request, env }) {
       popup: org.popup_html || generatePopup(org),
       source: org.source || '',
       country: org.country || '',
+      city: org.city || '',
+      region: org.region || '',
+      address: org.address || '',
+      postalCode: org.postal_code || '',
       website: org.website || '',
+      email: org.email || '',
+      phone: org.phone || '',
+      organizationType: org.organization_type || '',
       acceptsVolunteers: !!org.accepts_volunteers,
       acceptsVisitors: !!org.accepts_visitors,
       acceptsShortterm: !!org.accepts_shortterm,
@@ -145,10 +152,44 @@ export async function onRequestGet({ request, env }) {
       hasJobs: !!org.has_jobs,
       hasStays: !!org.has_stays,
       hasEvents: !!org.has_events,
+      schemaOrg: buildSchemaOrg(org)
     }
   }));
 
   return jsonResponse({ type: 'FeatureCollection', features });
+}
+
+function buildSchemaOrg(org) {
+  const schema = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    '@id': `https://volunteer.templeearth.cc/?org=${org.id}`,
+    name: org.name,
+    description: org.description || '',
+    url: org.website || `https://volunteer.templeearth.cc/?org=${org.id}`,
+    identifier: { '@type': 'PropertyValue', propertyID: 'ComeUnity ID', value: String(org.id) }
+  };
+  if (org.email) schema.email = org.email;
+  if (org.phone) schema.telephone = org.phone;
+  if (org.latitude && org.longitude) {
+    schema.geo = {
+      '@type': 'GeoCoordinates',
+      latitude: org.latitude,
+      longitude: org.longitude
+    };
+  }
+  const addressParts = [org.address, org.city, org.region, org.postal_code, org.country].filter(Boolean);
+  if (addressParts.length) {
+    schema.address = {
+      '@type': 'PostalAddress',
+      streetAddress: org.address || '',
+      addressLocality: org.city || '',
+      addressRegion: org.region || '',
+      postalCode: org.postal_code || '',
+      addressCountry: org.country || ''
+    };
+  }
+  return schema;
 }
 
 export async function onRequestOptions({ request }) {

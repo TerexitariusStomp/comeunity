@@ -4,6 +4,10 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Cache-Control: public, max-age=3600
 
+/*.xml
+  Content-Type: application/xml; charset=utf-8
+  Cache-Control: public, max-age=86400
+
 /*.json
   Content-Type: application/json
   Cache-Control: public, max-age=86400
