@@ -174,33 +174,6 @@
             flex-wrap: wrap;
             align-items: center;
         }
-        .search-wrap {
-            flex: 1;
-            min-width: 220px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            background: var(--secondary);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 0 12px;
-            height: 40px;
-        }
-        .search-wrap i {
-            color: var(--muted-foreground);
-            font-size: 12px;
-        }
-        .search-input {
-            flex: 1;
-            background: transparent;
-            border: none;
-            color: var(--foreground);
-            font-size: 13px;
-            font-family: var(--font-sans);
-            outline: none;
-            min-width: 0;
-        }
-        .search-input::placeholder { color: var(--muted-foreground); opacity: 0.6; }
         .btn {
             padding: 0 14px;
             height: 40px;
@@ -219,18 +192,6 @@
             color: var(--foreground);
         }
         .btn:hover { background: var(--muted); border-color: var(--muted-foreground); }
-        .btn-primary {
-            background: var(--primary);
-            color: var(--primary-foreground);
-            border-color: var(--primary);
-        }
-        .btn-primary:hover { background: #b56a2e; border-color: #b56a2e; }
-        .btn-ghost {
-            background: transparent;
-            color: var(--muted-foreground);
-            border-color: transparent;
-        }
-        .btn-ghost:hover { background: var(--secondary); color: var(--foreground); }
         .btn-ics {
             background: rgba(212, 168, 75, 0.12);
             color: var(--accent);
@@ -477,7 +438,6 @@
             .calendar-event { font-size: 0.6rem; }
             .controls { gap: 8px; }
             .btn { padding: 0 10px; height: 36px; font-size: 11px; }
-            .search-wrap { height: 36px; }
         }
     </style>
 </head>
@@ -506,12 +466,6 @@
     </div>
 
     <div class="controls">
-        <div class="search-wrap">
-            <i class="fas fa-search"></i>
-            <input type="text" class="search-input" id="searchInput" placeholder="Search events, organizations, locations...">
-        </div>
-        <button class="btn btn-primary" id="searchBtn"><i class="fas fa-search"></i> Search</button>
-        <button class="btn btn-ghost" id="clearBtn"><i class="fas fa-times"></i> Clear</button>
         <select id="formatFilter" class="filter-select">
             <option value="">All Events</option>
             <option value="remote">Remote Only</option>
@@ -541,7 +495,6 @@
 
     <script>
         const API_BASE = '';
-        let currentSearch = '';
         let calendarDate = new Date();
         let calendarEvents = [];
 
@@ -575,7 +528,7 @@
             var m = calendarDate.getMonth() + 1;
             try {
                 var formatFilter = document.getElementById('formatFilter').value;
-                const r = await fetch(API_BASE + '/api/events-detailed/?limit=5000&year=' + y + '&month=' + m + '&search=' + encodeURIComponent(currentSearch) + (formatFilter ? '&event_format=' + formatFilter : ''));
+                const r = await fetch(API_BASE + '/api/events-detailed/?limit=5000&year=' + y + '&month=' + m + (formatFilter ? '&event_format=' + formatFilter : ''));
                 calendarEvents = await r.json();
                 renderCalendar();
                 updateStats();
@@ -701,22 +654,6 @@
             document.getElementById('modalOverlay').classList.remove('active');
         }
 
-        document.getElementById('searchBtn').addEventListener('click', function() {
-            currentSearch = document.getElementById('searchInput').value.trim();
-            loadCalendarEvents();
-        });
-        document.getElementById('searchInput').addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                currentSearch = this.value.trim();
-                loadCalendarEvents();
-            }
-        });
-        document.getElementById('clearBtn').addEventListener('click', function() {
-            document.getElementById('searchInput').value = '';
-            document.getElementById('formatFilter').value = '';
-            currentSearch = '';
-            loadCalendarEvents();
-        });
         document.getElementById('formatFilter').addEventListener('change', function() {
             loadCalendarEvents();
         });
