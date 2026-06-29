@@ -376,18 +376,21 @@ def main():
                         (payload, org_id),
                     )
                     conn.commit()
-                stats["enriched"] += 1
-                done_ids.add(org_id)
+                    stats["enriched"] += 1
+                    done_ids.add(org_id)
                 print(f"  [{i+1}/{len(orgs)}] Enriched {org['name'][:50]} ({len(payload)} chars)")
             elif status == "error":
-                stats["errors"] += 1
-                done_ids.add(org_id)
+                if not args.dry_run:
+                    stats["errors"] += 1
+                    done_ids.add(org_id)
                 print(f"  [{i+1}/{len(orgs)}] Error {org['name'][:50]}: {payload}")
             else:
-                stats["skipped"] += 1
-                done_ids.add(org_id)
+                if not args.dry_run:
+                    stats["skipped"] += 1
+                    done_ids.add(org_id)
                 print(f"  [{i+1}/{len(orgs)}] Skipped {org['name'][:50]}")
-            save_checkpoint(list(done_ids), stats)
+            if not args.dry_run:
+                save_checkpoint(list(done_ids), stats)
 
     if not args.dry_run:
         write_d1_upsert_sql(conn)
